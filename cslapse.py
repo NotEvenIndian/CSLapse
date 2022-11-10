@@ -1,12 +1,11 @@
-import os
-import easygui
+import subprocess
 from datetime import datetime
-import cv2
-
 from pathlib import Path
-
 from threading import Lock
 import concurrent.futures
+
+import cv2
+import easygui
 
 def rmtree(root):
     for p in root.iterdir():
@@ -36,17 +35,26 @@ def collectRawFiles(infolder,cityName):
 def threaded(lock,srcFile,shared):
     #Prepare command that calls cslmapview.exe
     newFileName=Path(shared["tempFolder"],srcFile.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
-    cmd=shared["cmd"].format(old=str(srcFile),new=str(newFileName))
+    cmd=shared["cmd"]
+    cmd[1]=str(srcFile)
+    cmd[3]=str(newFileName)
 
     #call CSLMapview.exe to export the image. Try at most 15 times, abort after.
-    for i in range(15):
-        os.system(cmd)
+    for _ in range(15):
         #Ensure that the image file was successfully created. 
-        if  newFileName.exists():
+        try:
+            subprocess.run(cmd,shell=False,stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL,check=True)
+            
             #record that a new image was created and continue to the next one
             with lock:
                 shared["imageFiles"].append(str(newFileName))
+
+                #Display status
+                ratio=50*len(shared["imageFiles"])//shared["limit"]
+                print(f"\r |{'#'*ratio}{'-'*(50-ratio)}| {len(shared['imageFiles'])} of {shared['limit']} ",end="")
             return
+        except subprocess.CalledProcessError(returncode, cmd):
+            pass
 
 #Export all image files (or all up to the set limit)
 def createImages(rawFiles,settings):
@@ -55,23 +63,26 @@ def createImages(rawFiles,settings):
 
     #Prepare shared resources for threading
     shared={
+        "limit":limit,
         "tempFolder":settings["tempFolder"],
-        "cmd":'start /W '+settings["exeName"]+' "{old}" -output "{new}" -silent -imagewidth '+str(settings["imageWidth"])+' -area '+str(settings["area"]),
+        "cmd":[settings["executable"],"","-output","","-silent","-imagewidth",str(settings["imageWidth"]),"-area",str(settings["area"])],
         "imageFiles":[]
     }
 
     #Run CSLMapView on several threads parallel
+    print(f" |{'-'*50}| 0 of {limit} ",end="")
     l=Lock()
     with concurrent.futures.ThreadPoolExecutor(settings["threads"]) as executor:
         for i in range(limit):
+            #start exporting on a new thread
             executor.submit(threaded,l,rawFiles[i],shared)
+    print("Done")
 
     #Return a sorted array as the order might have changed during threading
     return sorted(shared["imageFiles"])
 
 #Combine image files into a video file. Potentially very huge filesize.
 def renderVideo(images,outFile,settings):
-    print("Creating video:")
     #create video file
     out = cv2.VideoWriter(outFile,cv2.VideoWriter_fourcc(*"mp4v"), settings["fps"], (settings["imageWidth"],settings["imageWidth"]))
     i=0
@@ -85,7 +96,7 @@ def renderVideo(images,outFile,settings):
         out.write(img)
 
         i+=1
-    print(f"\r |{'#'*50}| {i} of {len(images)}")
+    print(f"\r |{'#'*50}| {i} of {len(images)} Done")
     out.release()
 
 #Delete temporary folder and files
@@ -102,17 +113,15 @@ def main():
     settings={
         "fps":12,               #fps: 12 with 5 min autosave yields 3600x speed
         "area":3.2,             #Ingame tiles on the video, centered at the center of the map
-        "limit":20,              #Limit the frames in the video, ideal for test runs to see how it will look. Keep at 0 to ignore
+        "limit":0,              #Limit the frames in the video, ideal for test runs to see how it will look. Keep at 0 to ignore
         "imageWidth":2000,      #Image (and video) dimensions in pixels
         "threads":6,            #Number of threads to use - more threads put a heavier load on cpu and not necessarily increase speed
-        "exeName":"",           #CSLMapView.exe but better be safe
+        "executable":"",        #CSLMapView.exe
         "tempFolder":""         #Folder where temporary image files will be stored, it's deleted before the program exits
     }
 
     #Locate cslmapviewer.exe
-    exeFile=Path(easygui.fileopenbox(title="Select file",msg="Select CSLmapview.exe",filetypes=["*.exe"]))
-    settings["exeName"]=exeFile.name
-    os.chdir(exeFile.parent)
+    settings["executable"]=easygui.fileopenbox(title="Select file",msg="Select CSLmapview.exe",filetypes=["*.exe"])
 
     #locate the source files
     sampleFile=Path(easygui.fileopenbox(
@@ -120,7 +129,6 @@ def main():
         filetypes=[["*.cslmap.gz", "*.cslmap", "CSLmap files"]]
         ))
     sourceDir=sampleFile.parent
-    print(sourceDir)
     cityName=sampleFile.stem.split("-")[0]
 
     #prepare temporary directory
@@ -131,19 +139,20 @@ def main():
         rawFiles=collectRawFiles(sourceDir,cityName)
 
         #export images from source files
+        print("\nCreating images...")
         imgFiles=createImages(rawFiles,settings)
 
         #Join the images into a video and save it to the source directory
-        print("\nRendering video from images...",end="")
+        print("\nRendering video from images...")
         outFile=str(Path(sourceDir,f'{cityName.encode("ascii", "ignore").decode()}-{time}.mp4'))
         renderVideo(imgFiles, outFile,settings)
 
-        print("See your timelapse at",outFile)
+        print("\nSee your timelapse at",outFile)
     except Exception as e:
         print(e)
     finally:
         #Clean up image files and temporary folder
-        print("Cleaning up temporary files...",end="")
+        print("\nCleaning up temporary files...",end="")
         cleanup(settings["tempFolder"])
         print("Done")
 
