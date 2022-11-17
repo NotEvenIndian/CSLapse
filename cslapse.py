@@ -44,6 +44,9 @@ def threaded(lock,srcFile,shared):
         #Ensure that the image file was successfully created. 
         try:
             subprocess.run(cmd,shell=False,stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL,check=True)
+
+            #Make sure the new file was created successfully
+            assert newFileName.exists()
             
             #record that a new image was created and continue to the next one
             with lock:
@@ -54,6 +57,8 @@ def threaded(lock,srcFile,shared):
                 print(f"\r |{'#'*ratio}{'-'*(50-ratio)}| {len(shared['imageFiles'])} of {shared['limit']} ",end="")
             return
         except subprocess.CalledProcessError(returncode, cmd):
+            pass
+        except AssertionError():
             pass
 
 #Export all image files (or all up to the set limit)
