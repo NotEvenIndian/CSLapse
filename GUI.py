@@ -9,6 +9,7 @@ import cv2
 from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
+from tkinter import messagebox
 
 def rmtree(root):
     '''Recursively removes directory tree'''
@@ -44,6 +45,8 @@ def exportFile(srcFile,outFolder,cmd,retry=15):
             assert newFileName.exists()
             
             return str(newFileName)
+        except e:
+            print(e)
         except subprocess.CalledProcessError(returncode,cmd):pass
         except AssertionError():pass
     return None
@@ -85,6 +88,17 @@ class CSLapse():
             with self.lock:
                 self.vars["previewImage"]=PhotoImage(file=exported)
                 self.gui.preview.create_image(0,0,image=self.vars["previewImage"])
+            self.gui.setGUI("previewLoaded")
+        else:
+            self.gui.setGUI("previewLoadError")
+
+    def refreshPreview(self):
+        self.gui.setGUI("previewLoading")
+        self.collections["sampleCommand"][6]=str(
+            #int(self.vars["width"].get() * constants["defaultAreas"] / float(self.vars["areas"].get())))
+            self.vars["width"].get())
+        self.collections["sampleCommand"][8]=str(self.vars["areas"].get())
+        Thread(target=self.exportSample,daemon=True).start()
 
     def openSample(self,title):
         '''Select sample file from dialog and set variables accordingly'''
@@ -98,7 +112,7 @@ class CSLapse():
                 self.vars["videoLength"].set(self.vars["numOfFiles"].get())
             else:
                 self.vars["videoLength"].set(min(self.vars["videoLength"].get(),self.vars["numOfFiles"].get()))
-            Thread(target=self.exportSample,daemon=True).start()
+            self.refreshPreview()
         else:
             self.vars["sampleFile"].set(constants["noFileText"])
 
@@ -108,7 +122,7 @@ class CSLapse():
         if not selectedFile =="":
             self.vars["exeFile"].set(selectedFile)
             self.collections["sampleCommand"][0]=self.vars["exeFile"].get()
-            Thread(target=self.exportSample,daemon=True).start()
+            self.refreshPreview()
         else:
             self.vars["exeFile"].set(constants["noFileText"])
 
@@ -140,7 +154,7 @@ class CSLapse():
         '''Creates an mp4 video file from all the exported images'''
         self.gui.setGUI("startRender")
         #create video file
-        outFile=str(Path(self.tempFolder.parent,f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
+        outFile=str(Path(self.sourceDir,f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
         out = cv2.VideoWriter(outFile,cv2.VideoWriter_fourcc(*"mp4v"), int(self.vars["fps"].get()), (int(self.vars["width"].get()),int(self.vars["width"].get())))
         for file in self.imageFiles:
             #add frame to video
@@ -230,12 +244,12 @@ class CSLapse():
             self.mainFrame=ttk.Frame(self.root)
             self.fileSelectionBox=ttk.Labelframe(self.mainFrame,text="Files")
             self.exeSelectLabel=ttk.Label(self.fileSelectionBox,text="Path to CSLMapViewer.exe")
-            self.exePath=ttk.Entry(self.fileSelectionBox,state=["readonly"],textvariable=vars["exeFile"])
-            self.exeSelectBtn=ttk.Button(self.fileSelectionBox,text="Select file",command=
+            self.exePath=ttk.Entry(self.fileSelectionBox,state=["readonly"],textvariable=vars["exeFile"],cursor=constants["clickable"])
+            self.exeSelectBtn=ttk.Button(self.fileSelectionBox,text="Select file",cursor=constants["clickable"],command=
                 lambda: cb["openExe"](texts["openExeTitle"]))
             self.sampleSelectLabel=ttk.Label(self.fileSelectionBox,text="Select a cslmap file of your city")
-            self.samplePath=ttk.Entry(self.fileSelectionBox,state=["readonly"],textvariable=vars["sampleFile"])
-            self.sampleSelectBtn=ttk.Button(self.fileSelectionBox,text="Select file",command=
+            self.samplePath=ttk.Entry(self.fileSelectionBox,state=["readonly"],textvariable=vars["sampleFile"],cursor=constants["clickable"])
+            self.sampleSelectBtn=ttk.Button(self.fileSelectionBox,text="Select file",cursor=constants["clickable"],command=
                 lambda: cb["openSample"](texts["openSampleTitle"]))
             self.filesLoading=ttk.Progressbar(self.fileSelectionBox)
             self.filesNumLabel=ttk.Label(self.fileSelectionBox,textvariable=vars["numOfFiles"])
@@ -267,9 +281,9 @@ class CSLapse():
             self.renderingTotalLabel=ttk.Label(self.progressFrame)
             self.renderingProgress=ttk.Progressbar(self.progressFrame,orient="horizontal",mode="determinate",variable=vars["renderingDone"])
 
-            self.submitBtn=ttk.Button(self.mainFrame,text="Export",command=
+            self.submitBtn=ttk.Button(self.mainFrame,text="Export",cursor=constants["clickable"],command=
                 lambda: cb["submit"]())
-            self.abortBtn=ttk.Button(self.mainFrame,text="Abort",command=
+            self.abortBtn=ttk.Button(self.mainFrame,text="Abort",cursor=constants["clickable"],command=
                 lambda:cb["abort"]())
 
         def createPreviewFrame(self,cb,vars):
@@ -278,16 +292,18 @@ class CSLapse():
             self.previewFrame=ttk.Frame(self.root)
 
             self.canvasFrame=ttk.Frame(self.previewFrame)
-            self.preview=Canvas(self.canvasFrame,relief=SUNKEN)
+            self.preview=Canvas(self.canvasFrame,relief=SUNKEN,borderwidth=2,cursor="")
             self.preview.create_image(0,0,image=vars["previewImage"])
+            self.refershPreviewBtn=ttk.Button(self.preview,text="Refresh",cursor=constants["clickable"],
+                command=lambda:cb["refreshPreview"]())
 
             self.canvasSettingFrame=ttk.Frame(self.previewFrame)
             self.zoomLabel=ttk.Label(self.canvasSettingFrame,text="Areas:")
             self.zoomEntry=ttk.Entry(self.canvasSettingFrame,width=5,textvariable=vars["areas"])
-            self.zoomSlider=ttk.Scale(self.canvasSettingFrame,orient=HORIZONTAL,from_=0.1,to=9.0,variable=vars["areas"],command=cb["areasSliderChanged"](vars["areas"]))
+            self.zoomSlider=ttk.Scale(self.canvasSettingFrame,orient=HORIZONTAL,from_=0.1,to=9.0,variable=vars["areas"],cursor=constants["clickable"],command=cb["areasSliderChanged"](vars["areas"]))
 
             self.rotationLabel=ttk.Label(self.canvasSettingFrame,text="Rotation:")
-            self.rotationSelection=ttk.Menubutton(self.canvasSettingFrame,textvariable=vars["rotation"])
+            self.rotationSelection=ttk.Menubutton(self.canvasSettingFrame,textvariable=vars["rotation"],cursor=constants["clickable"])
             self.rotationSelection.menu=Menu(self.rotationSelection,tearoff=0)
             self.rotationSelection["menu"]=self.rotationSelection.menu
             for option in constants["rotaOptions"]:
@@ -336,7 +352,6 @@ class CSLapse():
             self.submitBtn.grid(column=0,row=10,sticky=(S,E,W))
             self.abortBtn.grid(column=0,row=11,sticky=(S,E,W))
 
-
         def gridPreviewFrame(self):
             self.middleBar.grid(column=1,row=0,sticky=SW)
 
@@ -344,6 +359,7 @@ class CSLapse():
 
             self.canvasFrame.grid(column=0,row=0,sticky=NSEW)
             self.preview.grid(column=0,row=0,sticky=NSEW)
+            self.refershPreviewBtn.grid(column=1,row=0,sticky=NE)
 
             self.canvasSettingFrame.grid(column=0,row=1,sticky=NSEW)
             self.zoomLabel.grid(column=0,row=0,sticky=W)
@@ -363,6 +379,7 @@ class CSLapse():
             self.previewFrame.rowconfigure(0,weight=1)
             self.canvasFrame.columnconfigure(0,weight=1)
             self.canvasFrame.rowconfigure(0,weight=1)
+            self.preview.columnconfigure(0,weight=1)
             self.canvasSettingFrame.columnconfigure(2,weight=1)
 
         def enable(self,*args):
@@ -410,9 +427,18 @@ class CSLapse():
                 self.enable(self.submitBtn,self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry,self.rotationSelection)
                 self.hide(self.progressFrame,self.abortBtn)
                 self.show(self.submitBtn)
-
-        def refreshPreview():
-            pass
+            elif state=="previewLoading":
+                self.disable(self.refershPreviewBtn)
+                #TODO: Add loading image to canvas
+                #self.preview.create_image(0,0,image="")
+                #TODO: Add loading image to refresh button
+                self.preview.configure(cursor="watch")
+            elif state=="previewLoaded":
+                self.enable(self.refershPreviewBtn)
+                self.preview.configure(cursor=constants["previewCursor"])
+            elif state=="previewLoadError":
+                self.enable(self.refershPreviewBtn)
+                self.preview.configure(cursor="")
 
         def test(self,*args,**kwargs):
             pass
@@ -433,7 +459,8 @@ class CSLapse():
                 "areasEntered":roundToTwoDecimals,
                 "areasSliderChanged":roundToTwoDecimals,
                 "submit":lambda: Thread(target=self.external.run,daemon=True).start(),
-                "abort":self.external.abort
+                "abort":self.external.abort,
+                "refreshPreview":self.external.refreshPreview
             }
 
             self.createMainFrame(self.callBacks,self.external.vars,self.external.filetypes,constants["texts"])
@@ -460,6 +487,8 @@ if __name__=="__main__":
         "texts":{
             "openExeTitle":"Select CSLMapViewer.exe",
             "openSampleTitle":"Select a cslmap save of your city",
-        }
+        },
+        "clickable":"hand2",
+        "previewCursor":"crosshair"
     }
     main()
