@@ -11,6 +11,8 @@ from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
 
+from PIL import ImageTk, Image
+
 def rmtree(root):
     '''Recursively removes directory tree'''
     for p in root.iterdir():
@@ -86,8 +88,9 @@ class CSLapse():
                 self.tempFolder, 
                 self.collections["sampleCommand"][:])
             with self.lock:
-                self.vars["previewImage"]=PhotoImage(file=exported)
-                self.gui.preview.create_image(0,0,image=self.vars["previewImage"])
+                self.vars["previewSource"]=Image.open(exported)
+                self.vars["previewImage"]=ImageTk.PhotoImage(self.vars["previewSource"])
+                self.gui.preview.canvas.create_image(0,0,anchor=NW,image=self.vars["previewImage"])
             self.gui.setGUI("previewLoaded")
         else:
             self.gui.setGUI("previewLoadError")
@@ -166,10 +169,9 @@ class CSLapse():
 
     def run(self):
         '''Exports images and creatrs video from them'''
-        if not self.vars["exeFile"].get()==constants["noFileText"] and not len(self.rawFiles)==0 and self.vars["videoLength"].get()>0:
-            self.exportImageFiles()
-            self.renderVideo()
-            self.gui.setGUI("renderDone")
+        self.exportImageFiles()
+        self.renderVideo()
+        self.gui.setGUI("renderDone")
 
     def abort(self):
         '''Stops currently running process. Impossible to recover state afterwards'''
@@ -213,6 +215,7 @@ class CSLapse():
             "videoLength":IntVar(value=0),
             "exportingDone":IntVar(value=0),
             "renderingDone":IntVar(value=0),
+            "previewSource":"",
             "previewImage":PhotoImage(file="C:\\Program Files\\Epic Games\\CitiesSkylines\\CSLMapView\\foo.png")
         }
         
@@ -291,10 +294,9 @@ class CSLapse():
 
             self.previewFrame=ttk.Frame(self.root)
 
-            self.canvasFrame=ttk.Frame(self.previewFrame)
-            self.preview=Canvas(self.canvasFrame,relief=SUNKEN,borderwidth=2,cursor="")
-            self.preview.create_image(0,0,image=vars["previewImage"])
-            self.refershPreviewBtn=ttk.Button(self.preview,text="Refresh",cursor=constants["clickable"],
+            self.canvasFrame=ttk.Frame(self.previewFrame,relief=SUNKEN,borderwidth=2)
+            self.preview=CSLapse.GUI.Preview(self)
+            self.refershPreviewBtn=ttk.Button(self.preview.canvas,text="Refresh",cursor=constants["clickable"],
                 command=lambda:cb["refreshPreview"]())
 
             self.canvasSettingFrame=ttk.Frame(self.previewFrame)
@@ -358,7 +360,7 @@ class CSLapse():
             self.previewFrame.grid(column=20,row=0,sticky=NSEW)
 
             self.canvasFrame.grid(column=0,row=0,sticky=NSEW)
-            self.preview.grid(column=0,row=0,sticky=NSEW)
+            self.preview.canvas.grid(column=0,row=0,sticky=NSEW)
             self.refershPreviewBtn.grid(column=1,row=0,sticky=NE)
 
             self.canvasSettingFrame.grid(column=0,row=1,sticky=NSEW)
@@ -372,6 +374,7 @@ class CSLapse():
             self.root.columnconfigure(20,weight=1)
             self.root.rowconfigure(0,weight=1)
 
+            self.mainFrame.rowconfigure(8,weight=1)
             self.fileSelectionBox.columnconfigure(1,weight=1)
             self.progressFrame.columnconfigure(4,weight=1)
 
@@ -379,8 +382,13 @@ class CSLapse():
             self.previewFrame.rowconfigure(0,weight=1)
             self.canvasFrame.columnconfigure(0,weight=1)
             self.canvasFrame.rowconfigure(0,weight=1)
-            self.preview.columnconfigure(0,weight=1)
+            self.preview.canvas.columnconfigure(0,weight=1)
             self.canvasSettingFrame.columnconfigure(2,weight=1)
+
+            self.createBindings()
+
+        def createBindings(self):
+            self.preview.createBindings()
 
         def enable(self,*args):
             for widget in args:
@@ -430,15 +438,15 @@ class CSLapse():
             elif state=="previewLoading":
                 self.disable(self.refershPreviewBtn)
                 #TODO: Add loading image to canvas
-                #self.preview.create_image(0,0,image="")
+                #self.preview.canvas.create_image(0,0,image="")
                 #TODO: Add loading image to refresh button
-                self.preview.configure(cursor="watch")
+                self.preview.canvas.configure(cursor="watch")
             elif state=="previewLoaded":
                 self.enable(self.refershPreviewBtn)
-                self.preview.configure(cursor=constants["previewCursor"])
+                self.preview.canvas.configure(cursor=constants["previewCursor"])
             elif state=="previewLoadError":
                 self.enable(self.refershPreviewBtn)
-                self.preview.configure(cursor="")
+                self.preview.canvas.configure(cursor="")
 
         def test(self,*args,**kwargs):
             pass
@@ -447,6 +455,25 @@ class CSLapse():
             self.external=parent
             self.root=Tk()
             self.root.title("CSLapse")
+
+        def submitPressed(self):
+            '''Checks if all conditions are satified and starts exporting if yes. Shows warning if not'''
+            if self.external.vars["exeFile"].get()==constants["noFileText"]:
+                messagebox.showwarning(title="Warning",message=constants["texts"]["noExeMessage"])
+            elif self.external.vars["sampleFile"].get()==constants["noFileText"]:
+                messagebox.showwarning(title="Warning",message=constants["texts"]["noSampleMessage"])
+            elif not self.external.vars["videoLength"].get()>0:
+                messagebox.showwarning(title="Warning",message=constants["texts"]["invalidLengthMessage"])
+            else:
+                Thread(target=self.external.run,daemon=True).start()
+
+        def abortPressed(self):
+            '''Asks user if really wants to kill. Kills if yes, nothing if no.'''
+            if messagebox.askyesno(title="Abort action?",message=constants["texts"]["askAbort"]):
+                exit(1)
+            #TODO: kill threads running the export operation from here
+            else:
+                pass
 
         def configureWindow(self):
             '''Sets up widgets, event bindings, grid for the main window'''
@@ -458,8 +485,8 @@ class CSLapse():
                 "threadsChanged":self.external.null,
                 "areasEntered":roundToTwoDecimals,
                 "areasSliderChanged":roundToTwoDecimals,
-                "submit":lambda: Thread(target=self.external.run,daemon=True).start(),
-                "abort":self.external.abort,
+                "submit": self.submitPressed,
+                "abort":self.abortPressed,
                 "refreshPreview":self.external.refreshPreview
             }
 
@@ -471,11 +498,45 @@ class CSLapse():
 
             self.configure()
 
+        class Preview(object):
+            def __init__(self, parent):
+                self.gui=parent
+                self.canvas=Canvas(self.gui.canvasFrame,cursor="")
+                self.active=False
+
+                self.fullWidth=self.canvas.winfo_screenwidth()    #Width of drawable canvas in pixels
+                self.fullheight=self.canvas.winfo_screenheight()   #Height of drawable canvas in pixels
+                self.imageWidth=0   #Width of original image in pixels
+                self.imageHeight=0  #Height of original image in pixels
+
+                self.printAreaX=0   #X coordinate of the top left corner of the print area
+                self.printAreaY=0   #Y coordinate of the top left corner of the printarea
+                self.printAreaW=0   #Width of printarea
+                self.printAreaH=0   #Height of printarea
+
+                self.canvasZeroX=0  #X Coordinate of pixel in top left of visible canvas
+                self.canvasZeroY=0  #Y Coordinate of pixel in top left of visible canvas
+
+                self.placeholderImage=ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
+                self.canvas.create_image(0,0,image=self.placeholderImage,tags="placeholder")
+
+            def createBindings(self):
+                self.canvas.bind("<Configure>", self.resized)
+
+            def resized(self,event):
+                self.fullWidth=event.width
+                self.fullheight=event.height
+                if self.active:pass
+                if not self.active:
+                    self.canvas.moveto("placeholder",x=str((self.fullWidth-self.placeholderImage.width())/2),
+                                                    y=str((self.fullheight-self.placeholderImage.height())/2))
+
 def main():
     O=CSLapse()
     O.gui.root.mainloop()
 
 if __name__=="__main__":
+    currentDirectory=Path(__file__).parent.resolve() # current directory
     constants={
         "sampleExportWidth":2000,
         "defaultFPS":24,
@@ -487,8 +548,14 @@ if __name__=="__main__":
         "texts":{
             "openExeTitle":"Select CSLMapViewer.exe",
             "openSampleTitle":"Select a cslmap save of your city",
+            "noExeMessage":"Select CSLMapviewer.exe first!",
+            "noSampleMessage":"Select a city file first!",
+            "invalidLengthMessage":"Invalid length!",
+            "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost."
+            
         },
         "clickable":"hand2",
-        "previewCursor":"crosshair"
+        "previewCursor":"crosshair",
+        "noPreviewImage":"media/NOIMAGE.png"#Path(currentDirectory,"media","NOIMGAE.png")
     }
     main()
