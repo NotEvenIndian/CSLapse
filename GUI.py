@@ -30,7 +30,7 @@ def createTempDir(oldFolder,location,time):
     tempFolder.mkdir()
     return tempFolder
 
-def exportFile(srcFile,outFolder,cmd,retry=15):
+def exportFile(srcFile,outFolder,cmd,retry):
     '''Call CSLMapView to export one image file and return outfile's name. Should run on separate thread'''
 
     #Prepare command that calls cslmapview.exe
@@ -41,6 +41,9 @@ def exportFile(srcFile,outFolder,cmd,retry=15):
     #call CSLMapview.exe to export the image. Try again at fail, abort after manz tries.
     for _ in range(retry):
         try:
+            #Return prematurely on abort
+            if constants["abort"]:return
+
             subprocess.run(cmd,shell=False,stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL,check=False)
 
             #Ensure that the image file was successfully created. 
@@ -54,6 +57,7 @@ def exportFile(srcFile,outFolder,cmd,retry=15):
     return None
 
 def roundToTwoDecimals(var):
+    '''Round the decimal in textvariable to 2 decimal places'''
     var.set(str(round(float(var.get()),2)))
 
 class CSLapse():
@@ -81,21 +85,23 @@ class CSLapse():
             ))
 
     def exportSample(self):
-        '''Export png from the cslmap file that will be the last frame of the video'''
+        '''Run this on separate thread - Export png from the cslmap file that will be the last frame of the video'''
         if (not self.vars["exeFile"].get()==constants["noFileText"]) and (not self.vars["sampleFile"].get()==constants["noFileText"]):
             exported=exportFile(
                 self.rawFiles[self.vars["videoLength"].get()-1], 
                 self.tempFolder, 
-                self.collections["sampleCommand"][:])
+                self.collections["sampleCommand"][:],
+                constants["defaultRetry"]
+                )
             with self.lock:
                 self.vars["previewSource"]=Image.open(exported)
-                self.vars["previewImage"]=ImageTk.PhotoImage(self.vars["previewSource"])
-                self.gui.preview.canvas.create_image(0,0,anchor=NW,image=self.vars["previewImage"])
+                self.gui.preview.justExported()
             self.gui.setGUI("previewLoaded")
         else:
             self.gui.setGUI("previewLoadError")
 
     def refreshPreview(self):
+        '''Export the preview CSLMap file with current settings'''
         self.gui.setGUI("previewLoading")
         self.collections["sampleCommand"][6]=str(
             #int(self.vars["width"].get() * constants["defaultAreas"] / float(self.vars["areas"].get())))
@@ -130,9 +136,12 @@ class CSLapse():
             self.vars["exeFile"].set(constants["noFileText"])
 
     def exportImageOnThread(self,srcFile,cmd):
+        '''Call this on separate thread - calls the given command to export the given image, records success'''
         newFileName=None
-        while newFileName==None:
-            newFileName=exportFile(srcFile, self.tempFolder, cmd)
+        while newFileName==None and not constants["abort"]:
+            newFileName=exportFile(srcFile, self.tempFolder, cmd,int(self.vars["retry"].get()))
+            #TODO:Ask for confirmation if it fails many times, with timer. When timer runs out, try again automatically.
+
 
         with self.lock:
             self.imageFiles.append(newFileName)
@@ -150,6 +159,7 @@ class CSLapse():
                 #start exporting on a new thread
                 executor.submit(self.exportImageOnThread,self.rawFiles[i],cmd[:])
 
+        if constants["abort"]:return
         #Sort array as the order might have changed during threading
         self.imageFiles=sorted(self.imageFiles)
         
@@ -160,6 +170,7 @@ class CSLapse():
         outFile=str(Path(self.sourceDir,f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
         out = cv2.VideoWriter(outFile,cv2.VideoWriter_fourcc(*"mp4v"), int(self.vars["fps"].get()), (int(self.vars["width"].get()),int(self.vars["width"].get())))
         for file in self.imageFiles:
+            if constants["abort"]:break
             #add frame to video
             img = cv2.imread(file)
             out.write(img)
@@ -169,14 +180,18 @@ class CSLapse():
 
     def run(self):
         '''Exports images and creatrs video from them'''
+        if constants["abort"]:return
         self.exportImageFiles()
+        if constants["abort"]:return
         self.renderVideo()
+        if constants["abort"]:return
         self.gui.setGUI("renderDone")
 
     def abort(self):
         '''Stops currently running process. Impossible to recover state afterwards'''
-
+        constants["abort"]=True
         exit(1)
+        #TODO: Change the way concurrent threads are killed couse this is not nice
 
     def resetState(self):
         '''Sets all variables to the default state'''
@@ -210,19 +225,20 @@ class CSLapse():
             "fps":IntVar(value=constants["defaultFPS"]),
             "width":IntVar(value=constants["defaultExportWidth"]),
             "threads":IntVar(value=constants["defaultThreads"]),
+            "retry":IntVar(value=constants["defaultRetry"]),
             "rotation":StringVar(value=constants["rotaOptions"][0]),
             "areas":StringVar(value=constants["defaultAreas"]),
             "videoLength":IntVar(value=0),
             "exportingDone":IntVar(value=0),
             "renderingDone":IntVar(value=0),
             "previewSource":"",
-            "previewImage":PhotoImage(file="C:\\Program Files\\Epic Games\\CitiesSkylines\\CSLMapView\\foo.png")
+            "previewImage":""
         }
         
         self.sourceDir=None #Path type, the directory where cslmap files are loaded from
         self.cityName=None #string, the name of the city
         self.tempFolder=None #Path type, the location where temporary files are created
-        self.rawFiles=[]
+        self.rawFiles=[]    #Collected cslmap files with matching city name
         self.imageFiles=[]
 
         self.filetypes={
@@ -244,6 +260,7 @@ class CSLapse():
     
     class GUI(object):
         def createMainFrame(self,cb,vars,filetypes,texts):
+            '''Create the widgets in the left main window'''
             self.mainFrame=ttk.Frame(self.root)
             self.fileSelectionBox=ttk.Labelframe(self.mainFrame,text="Files")
             self.exeSelectLabel=ttk.Label(self.fileSelectionBox,text="Path to CSLMapViewer.exe")
@@ -271,6 +288,8 @@ class CSLapse():
             self.advancedSettingBox=ttk.Labelframe(self.mainFrame,text="Advanced")
             self.threadsLabel=ttk.Label(self.advancedSettingBox,text="Threads:")
             self.threadsEntry=ttk.Entry(self.advancedSettingBox,width=5,textvariable=vars["threads"])
+            self.retryLabel=ttk.Label(self.advancedSettingBox,text="Fail after:")
+            self.retryEntry=ttk.Entry(self.advancedSettingBox,width=5,textvariable=vars["retry"])
 
             self.progressFrame=ttk.Frame(self.mainFrame)
             self.exportingLabel=ttk.Label(self.progressFrame,text="Exporting files:")
@@ -290,14 +309,19 @@ class CSLapse():
                 lambda:cb["abort"]())
 
         def createPreviewFrame(self,cb,vars):
+            '''Create widgets related to the preview canvas, initialize Preview object'''
             self.middleBar=ttk.Separator(self.root,orient="vertical")
 
             self.previewFrame=ttk.Frame(self.root)
 
             self.canvasFrame=ttk.Frame(self.previewFrame,relief=SUNKEN,borderwidth=2)
             self.preview=CSLapse.GUI.Preview(self)
-            self.refershPreviewBtn=ttk.Button(self.preview.canvas,text="Refresh",cursor=constants["clickable"],
+            self.refreshPreviewBtn=ttk.Button(self.preview.canvas,text="Refresh",cursor=constants["clickable"],
                 command=lambda:cb["refreshPreview"]())
+            self.fitToCanvasBtn=ttk.Button(self.preview.canvas,text="Fit",cursor=constants["clickable"],
+                command=self.preview.fitToCanvas)
+            self.originalSizeBtn=ttk.Button(self.preview.canvas,text="100%",cursor=constants["clickable"],
+                command=self.preview.scaleToOriginal)
 
             self.canvasSettingFrame=ttk.Frame(self.previewFrame)
             self.zoomLabel=ttk.Label(self.canvasSettingFrame,text="Areas:")
@@ -312,6 +336,7 @@ class CSLapse():
                 self.rotationSelection.menu.add_radiobutton(label=option,variable=vars["rotation"])
 
         def gridMainFrame(self):
+            '''Add main widgets to the grid'''
             self.mainFrame.grid(column=0,row=0,sticky=NSEW,padx=5,pady=5)
 
             self.fileSelectionBox.grid(column=0,row=0,sticky=EW)
@@ -337,6 +362,8 @@ class CSLapse():
             self.advancedSettingBox.grid(column=0,row=2,sticky=EW)
             self.threadsLabel.grid(column=0,row=0,sticky=W)
             self.threadsEntry.grid(column=1,row=0,sticky=EW)
+            self.retryLabel.grid(column=0,row=1,sticky=W)
+            self.retryEntry.grid(column=1,row=1,sticky=EW)
 
             self.progressFrame.grid(column=0,row=9,sticky=EW)
             self.exportingLabel.grid(column=0,row=0)
@@ -355,22 +382,28 @@ class CSLapse():
             self.abortBtn.grid(column=0,row=11,sticky=(S,E,W))
 
         def gridPreviewFrame(self):
+            '''Add widgets related to preview to the grid'''
             self.middleBar.grid(column=1,row=0,sticky=SW)
 
             self.previewFrame.grid(column=20,row=0,sticky=NSEW)
 
             self.canvasFrame.grid(column=0,row=0,sticky=NSEW)
             self.preview.canvas.grid(column=0,row=0,sticky=NSEW)
-            self.refershPreviewBtn.grid(column=1,row=0,sticky=NE)
+            self.refreshPreviewBtn.grid(column=1,row=0,sticky=NE)
+            self.fitToCanvasBtn.grid(column=1,row=2,sticky=SE)
+            self.originalSizeBtn.grid(column=1,row=3,sticky=SE)
 
             self.canvasSettingFrame.grid(column=0,row=1,sticky=NSEW)
             self.zoomLabel.grid(column=0,row=0,sticky=W)
             self.zoomEntry.grid(column=1,row=0,sticky=W)
             self.zoomSlider.grid(column=2,row=0,sticky=EW)
-            self.rotationLabel.grid(column=0,row=1,columnspan=3,sticky=W)
-            self.rotationSelection.grid(column=1,row=1,columnspan=2,sticky=W)
+
+            #Functionality not implemented yet
+            #self.rotationLabel.grid(column=0,row=1,columnspan=3,sticky=W)
+            #self.rotationSelection.grid(column=1,row=1,columnspan=2,sticky=W)
 
         def configure(self):
+            '''Configure widgets'''
             self.root.columnconfigure(20,weight=1)
             self.root.rowconfigure(0,weight=1)
 
@@ -383,36 +416,42 @@ class CSLapse():
             self.canvasFrame.columnconfigure(0,weight=1)
             self.canvasFrame.rowconfigure(0,weight=1)
             self.preview.canvas.columnconfigure(0,weight=1)
+            self.preview.canvas.rowconfigure(1,weight=1)
             self.canvasSettingFrame.columnconfigure(2,weight=1)
 
             self.createBindings()
 
         def createBindings(self):
+            '''Bind events to GUI widgets'''
             self.preview.createBindings()
 
         def enable(self,*args):
+            '''Set all argument widgets to enabled'''
             for widget in args:
                 widget.state(["!disabled"])
 
         def disable(self,*args):
+            '''Set all argument widgets to disabled'''
             for widget in args:
                 widget.state(["disabled"])
 
         def show(self,*args):
+            '''Show all argument widgets'''
             for widget in args:
                 widget.grid()
 
         def hide(self,*args):
+            '''Hide all argument widgets'''
             for widget in args:
                 widget.grid_remove()
 
         def setGUI(self,state):
-            '''Set the GUI to a predefinde state. This sets the GUI variables and widgets.
+            '''Set the GUI to a predefined state. This sets the GUI variables and widgets.
             state should be one of ["startExport","startRender","renderDone","defaultState"]'''
             if state == "startExport":
                 self.external.vars["exportingDone"].set(0)
                 self.exportingProgress.config(maximum=self.external.vars["videoLength"].get())
-                self.disable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry)
+                self.disable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.retryEntry,self.zoomSlider,self.zoomEntry)
                 self.enable(self.abortBtn)
                 self.hide(self.submitBtn,self.renderingProgress,self.renderingLabel,self.renderingDoneLabel,self.renderingOfLabel,self.renderingTotalLabel)
                 self.show(self.progressFrame,self.exportingProgress,self.exportingLabel,self.exportingDoneLabel,self.exportingOfLabel,self.exportingTotalLabel,self.abortBtn)
@@ -420,36 +459,37 @@ class CSLapse():
                 self.external.vars["renderingDone"].set(0)
                 self.renderingTotalLabel.configure(text=len(self.external.imageFiles))
                 self.renderingProgress.config(maximum=len(self.external.imageFiles))
-                self.disable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry)
+                self.disable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.retryEntry,self.zoomSlider,self.zoomEntry)
                 self.enable(self.abortBtn)
                 self.hide(self.submitBtn,self.exportingProgress,self.exportingLabel,self.exportingDoneLabel,self.exportingOfLabel,self.exportingTotalLabel)
                 self.show(self.progressFrame,self.renderingProgress,self.renderingLabel,self.renderingDoneLabel,self.renderingOfLabel,self.renderingTotalLabel)
             elif state=="renderDone":
                 self.disable(self.abortBtn)
-                self.enable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry)
+                self.enable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.retryEntry,self.zoomSlider,self.zoomEntry)
                 self.show(self.submitBtn)
                 self.hide(self.progressFrame,self.abortBtn)
             elif state=="defaultState":
                 self.external.resetState()
-                self.disable(self.progressFrame,self.abortBtn)
-                self.enable(self.submitBtn,self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry,self.rotationSelection)
-                self.hide(self.progressFrame,self.abortBtn)
+                self.disable(self.progressFrame,self.abortBtn,self.fitToCanvasBtn,self.originalSizeBtn)
+                self.enable(self.submitBtn,self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.retryEntry,self.zoomSlider,self.zoomEntry,self.rotationSelection)
+                self.hide(self.progressFrame,self.abortBtn,self.refreshPreviewBtn,self.fitToCanvasBtn,self.originalSizeBtn)
                 self.show(self.submitBtn)
             elif state=="previewLoading":
-                self.disable(self.refershPreviewBtn)
+                self.disable(self.refreshPreviewBtn,self.fitToCanvasBtn,self.originalSizeBtn)
                 #TODO: Add loading image to canvas
-                #self.preview.canvas.create_image(0,0,image="")
                 #TODO: Add loading image to refresh button
                 self.preview.canvas.configure(cursor="watch")
             elif state=="previewLoaded":
-                self.enable(self.refershPreviewBtn)
+                self.enable(self.refreshPreviewBtn,self.fitToCanvasBtn,self.originalSizeBtn)
+                self.show(self.refreshPreviewBtn,self.fitToCanvasBtn,self.originalSizeBtn)
                 self.preview.canvas.configure(cursor=constants["previewCursor"])
             elif state=="previewLoadError":
-                self.enable(self.refershPreviewBtn)
+                self.enable(self.refreshPreviewBtn)
+                self.show(self.refreshPreviewBtn)
                 self.preview.canvas.configure(cursor="")
+            elif state=="aborting":
+                self.disable(self.exeSelectBtn,self.sampleSelectBtn,self.fpsEntry,self.imageWidthInput,self.lengthInput,self.threadsEntry,self.zoomSlider,self.zoomEntry,self.abortBtn,self.fitToCanvasBtn,self.originalSizeBtn,self.refreshPreviewBtn)
 
-        def test(self,*args,**kwargs):
-            pass
 
         def __init__(self,parent):
             self.external=parent
@@ -470,10 +510,16 @@ class CSLapse():
         def abortPressed(self):
             '''Asks user if really wants to kill. Kills if yes, nothing if no.'''
             if messagebox.askyesno(title="Abort action?",message=constants["texts"]["askAbort"]):
-                exit(1)
-            #TODO: kill threads running the export operation from here
+                self.external.abort()
+
+        def refreshPressed(self):
+            '''Handles refresh button press event'''
+            if self.external.vars["exeFile"].get()==constants["noFileText"]:
+                messagebox.showwarning(title="Warning",message=constants["texts"]["noExeMessage"])
+            elif self.external.vars["sampleFile"].get()==constants["noFileText"]:
+                messagebox.showwarning(title="Warning",message=constants["texts"]["noSampleMessage"])
             else:
-                pass
+                self.external.refreshPreview()
 
         def configureWindow(self):
             '''Sets up widgets, event bindings, grid for the main window'''
@@ -487,7 +533,7 @@ class CSLapse():
                 "areasSliderChanged":roundToTwoDecimals,
                 "submit": self.submitPressed,
                 "abort":self.abortPressed,
-                "refreshPreview":self.external.refreshPreview
+                "refreshPreview":self.refreshPressed
             }
 
             self.createMainFrame(self.callBacks,self.external.vars,self.external.filetypes,constants["texts"])
@@ -505,31 +551,119 @@ class CSLapse():
                 self.active=False
 
                 self.fullWidth=self.canvas.winfo_screenwidth()    #Width of drawable canvas in pixels
-                self.fullheight=self.canvas.winfo_screenheight()   #Height of drawable canvas in pixels
+                self.fullHeight=self.canvas.winfo_screenheight()   #Height of drawable canvas in pixels
                 self.imageWidth=0   #Width of original image in pixels
                 self.imageHeight=0  #Height of original image in pixels
 
-                self.printAreaX=0   #X coordinate of the top left corner of the print area
-                self.printAreaY=0   #Y coordinate of the top left corner of the printarea
-                self.printAreaW=0   #Width of printarea
-                self.printAreaH=0   #Height of printarea
+                self.printAreaX=0   #X coordinate of the top left corner of the print area on the original image
+                self.printAreaY=0   #Y coordinate of the top left corner of the printarea on the original image
+                self.printAreaW=0   #Width of printarea on the original image
+                self.printAreaH=0   #Height of printarea on the original image
+                self.previewAreas=0 #Areas printed on the currently active preview image
 
-                self.canvasZeroX=0  #X Coordinate of pixel in top left of visible canvas
-                self.canvasZeroY=0  #Y Coordinate of pixel in top left of visible canvas
+                self.imageX=0  #X Coordinate on canvas of pixel in top left of image
+                self.imageY=0  #Y Coordinate on canvas of pixel in top left of image
+                self.scaleFactor=1  #Conversion factor: canvas pixels / original image pixels
 
                 self.placeholderImage=ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
                 self.canvas.create_image(0,0,image=self.placeholderImage,tags="placeholder")
 
             def createBindings(self):
+                '''Bind actions to events on the canvas'''
                 self.canvas.bind("<Configure>", self.resized)
+                self.canvas.bind("<MouseWheel>",self.scrolled)
+                self.canvas.bind("<B1-Motion>",self.dragged)
+                self.canvas.bind("<ButtonPress-1>",self.clicked)
+
+            def resizeImage(self,newFactor):
+                '''Change the activeImage to one with the current scaleFactor, keep center pixel in center'''
+                #TODO: Change this so that center pixels remains in center
+                self.imageX=self.fullWidth/2-((self.fullWidth/2-self.imageX)/self.scaleFactor)*newFactor
+                self.imageY=self.fullHeight/2-((self.fullHeight/2-self.imageY)/self.scaleFactor)*newFactor
+
+                self.scaleFactor=newFactor
+
+                self.gui.external.vars["previewImage"]=ImageTk.PhotoImage(self.gui.external.vars["previewSource"].resize((int(self.imageWidth*self.scaleFactor),int(self.imageHeight*self.scaleFactor))))
+                self.canvas.itemconfigure(self.activeImage,image=self.gui.external.vars["previewImage"])
+                self.canvas.moveto(self.activeImage,x=self.imageX,y=self.imageY)
+
+            def fitToCanvas(self):
+                '''Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio'''
+                newScaleFactor=min(self.fullWidth/self.imageWidth,self.fullHeight/self.imageHeight)
+                self.resizeImage(newScaleFactor)
+                self.canvas.moveto(self.activeImage,x=(self.fullWidth-int(self.imageWidth*self.scaleFactor))/2,y=(self.fullHeight-int(self.imageHeight*self.scaleFactor))/2)
+                self.imageX=(self.fullWidth-self.imageWidth*self.scaleFactor)/2
+                self.imageY=(self.fullHeight-self.imageHeight*self.scaleFactor)/2
+
+            def scaleToOriginal(self):
+                '''Rescale to the original size of the preview image'''
+                self.resizeImage(1)
+
+            def justExported(self):
+                '''Show newly exported preview image'''
+                self.imageWidth=self.gui.external.vars["width"].get()
+                self.imageHeight=self.gui.external.vars["width"].get()
+
+                self.previewAreas=float(self.gui.external.vars["areas"].get())
+                self.printAreaX=0
+                self.printAreaW=self.gui.external.vars["width"].get()
+                self.printAreaY=0
+                self.printAreaH=self.gui.external.vars["width"].get()
+                
+                self.gui.external.vars["previewImage"]=ImageTk.PhotoImage(self.gui.external.vars["previewSource"])
+                if self.active:
+                    self.canvas.itemconfigure(self.activeImage,image=self.gui.external.vars["previewImage"])
+                else:
+                    self.activeImage=self.canvas.create_image(0,0,anchor=CENTER,image=self.gui.external.vars["previewImage"])
+
+                self.fitToCanvas()
+
+                self.active=True
+                self.canvas.itemconfigure("placeholder",state="hidden")
 
             def resized(self,event):
-                self.fullWidth=event.width
-                self.fullheight=event.height
-                if self.active:pass
+                '''Handle change in the canvas's size'''
+                if self.active:
+                    #Center of the canvas should stay the center of the canvas when the window is resized
+                    self.imageX=((self.imageX+self.imageWidth*self.scaleFactor/2)*event.width/self.fullWidth)-(self.imageWidth*self.scaleFactor/2)
+                    self.imageY=((self.imageY+self.imageHeight*self.scaleFactor/2)*event.height/self.fullHeight)-(self.imageHeight*self.scaleFactor/2)
+                    self.canvas.moveto(self.activeImage,x=self.imageX,y=self.imageY)
+
                 if not self.active:
-                    self.canvas.moveto("placeholder",x=str((self.fullWidth-self.placeholderImage.width())/2),
-                                                    y=str((self.fullheight-self.placeholderImage.height())/2))
+                    self.canvas.moveto("placeholder",x=str((event.width-self.placeholderImage.width())/2),
+                                                    y=str((event.height-self.placeholderImage.height())/2))
+                self.fullWidth=event.width
+                self.fullHeight=event.height
+
+            def scrolled(self,event):
+                '''Handle scrolling (zoom) on canvas'''
+                if self.active:
+                    self.resizeImage(self.scaleFactor*(1+6/(event.delta)))
+
+            def dragged(self,event):
+                '''Handle dragging (panning) on canvas'''
+                if self.active:
+                    deltaX=event.x-self.lastClick[0]
+                    deltaY=event.y-self.lastClick[1]
+                    self.canvas.moveto(self.activeImage,x=self.imageX+deltaX,y=self.imageY+deltaY)
+                    self.imageX=self.imageX+deltaX
+                    self.imageY=self.imageY+deltaY
+                    self.lastClick=(event.x,event.y)
+
+            def clicked(self,event):
+                '''Handle buttonpress event on canvas'''
+                if self.active:
+                    self.lastClick=(event.x,event.y)
+
+            def areasChanged(self):
+                '''Currently out of use: Reflect change in export areas on preview'''
+                wRatio=self.imageWidth/self.previewAreas
+                self.printAreaX=(self.previewAreas-float(self.gui.external.vars["areas"].get()))/2*wRatio
+                self.printAreaW=wRatio*float(self.gui.external.vars["areas"].get())
+                hRatio=self.imageHeight/self.previewAreas
+                self.printAreaY=(self.previewAreas-float(self.gui.external.vars["areas"].get()))/2*hRatio
+                self.printAreaH=hRatio*float(self.gui.external.vars["areas"].get())
+
 
 def main():
     O=CSLapse()
@@ -538,10 +672,12 @@ def main():
 if __name__=="__main__":
     currentDirectory=Path(__file__).parent.resolve() # current directory
     constants={
+        "abort":False,
         "sampleExportWidth":2000,
         "defaultFPS":24,
         "defaultExportWidth":2000,
         "defaultThreads":6,
+        "defaultRetry":15,
         "defaultAreas":9.0,
         "noFileText":"No file selected",
         "rotaOptions":["0°","90°","180°","270°"],
@@ -550,12 +686,12 @@ if __name__=="__main__":
             "openSampleTitle":"Select a cslmap save of your city",
             "noExeMessage":"Select CSLMapviewer.exe first!",
             "noSampleMessage":"Select a city file first!",
-            "invalidLengthMessage":"Invalid length!",
+            "invalidLengthMessage":"Invalid video length!",
             "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost."
             
         },
         "clickable":"hand2",
-        "previewCursor":"crosshair",
+        "previewCursor":"fleur",
         "noPreviewImage":"media/NOIMAGE.png"#Path(currentDirectory,"media","NOIMGAE.png")
     }
     main()
