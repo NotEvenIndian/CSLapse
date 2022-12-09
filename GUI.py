@@ -18,27 +18,64 @@ class AbortException(Exception):pass
 class ExportError(Exception):pass
 
 def rmtree(root: Path) -> None:
-    """Recursively removes directory tree"""
-    for p in root.iterdir():
-        if p.is_dir():
-            rmtree(p)
+    """Recursively removes directory tree.
+    
+    Exceptions:
+        No permission to delete file: non-fatal
+        Otherwise cannot delete directory: fatal
+        Missing file: continue
+    """
+    children=list(root.iterdir())
+    i=0
+    while i < len(children):
+        if children[i].is_dir():
+            rmtree(children[i])
         else:
-            p.unlink()
-    root.rmdir()
+            try:
+                children[i].unlink(missing_ok=True)
+            except PermissionError as e:
+                if O.gui.nonFatalError(str(e)):
+                    i-=1
+            except Exception as e:
+                if not O.gui.fatalError(str(e)):
+                    raise AbortException() from e
+                else:
+                    i-=1
+            finally:
+                i+=1
+    while not constants["abort"]:
+        try:
+            root.rmdir()
+            return
+        except Exception as e:
+            if not O.gui.fatalError(str(e)):
+                raise AbortException() from e
+
 
 def createTempDir(oldFolder: Path, location: Path, time: str) -> Path:
-    """prepare temporary directory and delete old one"""
+    """prepare temporary directory and delete old one.
+    
+    Exceptions:
+        Cannot create directory: fatal
+    """
     #Remove previous tepmorarz directory
     if oldFolder is not None and oldFolder.exists(): rmtree(oldFolder)
     tempFolder = Path(location, "temp" + time)
     #Empty temporary directory if already exists - it shouldn't
     if tempFolder.exists(): rmtree(tempFolder)
-    tempFolder.mkdir()
-    return tempFolder
+    while not constants["abort"]:
+        try:
+            tempFolder.mkdir()
+            return tempFolder
+        except Exception as e:
+            O.gui.FatalError(str(e))
 
 def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int) -> str:
     """Call CSLMapView to export one image file and return outfile's name.
-    Throws ExportError if export fails after [retry] tries
+
+    Exceptions:
+        Abortexpression: propagates
+        Cannot export file after [retry] tries: raises ExportError
     """
 
     #Prepare command that calls cslmapview.exe
@@ -62,38 +99,40 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int) -> str
             return str(newFileName)
         except AbortException as error:
             raise AbortException() from error
-        except subprocess.CalledProcessError(returncode, cmd):pass
-        except AssertionError:pass
-        except e:
-            print(e)
+        except subprocess.CalledProcessError(returncode, cmd) as e:
+            pass
+        except AssertionError as e:
+            pass
+        except Exception as e:
+            pass
 
     #Throw exception on after repeatedly failing
     raise ExportError()
 
-def roundToTwoDecimals(var: Stringvar) -> None:
-    """Round the decimal in var to 2 decimal places"""
+def roundToTwoDecimals(var: StringVar) -> None:
+    """Round the decimal in var to 2 decimal places."""
     var.set(str(round(float(var.get()), 2)))
 
 class CSLapse():
     """Class containing details of the CSLapse GUI application."""
 
-    def _null(self, * args: Any, ** kwargs: Any) -> None:
+    def null(self, * args: Any, ** kwargs: Any) -> None:
         """Placeholder function, does nothing."""
         pass
 
     def openFile(self, title: str, filetypes: List[Tuple], defDir: str = None) -> str:
-        """Open file opening dialog box and return the full path to the selected file"""
+        """Open file opening dialog box and return the full path to the selected file."""
         return filedialog.askopenfilename(title = title, initialdir = defDir, filetypes = filetypes)
         
     def setSampleFile(self, sampleFile: str) -> None:
-        """Store city name and location of the sample file"""
+        """Store city name and location of the sample file."""
         sampleFile = Path(sampleFile)
         self.sourceDir = sampleFile.parent
         self.cityName = sampleFile.stem.split("-")[0]
         self.tempFolder = createTempDir(self.tempFolder, self.sourceDir, self.timestamp)
 
     def collectRawFiles(self) -> List[Path]:
-        """Make an array of files whose name matches the city's name"""
+        """Make an array of files whose name matches the city's name."""
         return sorted(
             filter(
                 lambda filename: filename.name.startswith(self.cityName) and ".cslmap" in filename.suffixes, 
@@ -101,28 +140,44 @@ class CSLapse():
             ))
 
     def exportSample(self) -> None:
-        """Run this on separate thread - Export png from the cslmap file that will be the last frame of the video"""
+        """Export png from the cslmap file that will be the last frame of the video.
+
+        This function should run on a separate thread.
+        
+        Exceptions:
+            AbortException gets propagated
+            ExportError: non-fatal
+            Other exceptions: non-fatal
+        """
         if (not self.vars["exeFile"].get() == constants["noFileText"]) and (not self.vars["sampleFile"].get() == constants["noFileText"]):
-            try:
-                exported = exportFile(
-                    self.rawFiles[self.vars["videoLength"].get()-1], 
-                    self.tempFolder, 
-                    self.collections["sampleCommand"][:],
-                    constants["defaultRetry"]
-                    )
-                with self.lock:
-                    self.vars["previewSource"] = Image.open(exported)
-                    self.gui.preview.justExported()
-                self.gui.setGUI("previewLoaded")
-            except AbortException:
-                self.gui.setGUI("previewLoadError")
-            except ExportError:
-                self.gui.setGUI("previewLoadError")
+            while True:
+                try:
+                    exported = exportFile(
+                        self.rawFiles[self.vars["videoLength"].get()-1], 
+                        self.tempFolder, 
+                        self.collections["sampleCommand"][:],
+                        constants["defaultRetry"]
+                        )
+                    with self.lock:
+                        self.vars["previewSource"] = Image.open(exported)
+                        self.gui.preview.justExported()
+                    self.gui.setGUI("previewLoaded")
+                    return
+                except AbortException:
+                    self.gui.setGUI("previewLoadError")
+                except ExportError as e:
+                    if not self.gui.nonFatalError(str(e)):
+                        self.gui.setGUI("previewLoadError")
+                        return
+                except Exception as e:
+                    if not self.gui.nonFatalError(str(e)):
+                        self.gui.setGUI("previewLoadError")
+                        return
         else:
             self.gui.setGUI("previewLoadError")
 
     def refreshPreview(self) -> None:
-        """Export the preview CSLMap file with current settings"""
+        """Export the preview CSLMap file with current settings."""
         self.gui.setGUI("previewLoading")
         self.collections["sampleCommand"][6] = str(
             #int(self.vars["width"].get() * constants["defaultAreas"] / float(self.vars["areas"].get())))
@@ -131,7 +186,7 @@ class CSLapse():
         Thread(target = self.exportSample, daemon = True).start()
 
     def openSample(self, title: str) -> None:
-        """Select sample file from dialog and set variables accordingly"""
+        """Select sample file from dialog and set variables accordingly."""
         selectedFile = self.openFile(title, self.filetypes["cslmap"], self.sourceDir)
         if not selectedFile == "" and not selectedFile == self.vars["sampleFile"].get():
             self.vars["sampleFile"].set(selectedFile)
@@ -147,7 +202,7 @@ class CSLapse():
             self.vars["sampleFile"].set(constants["noFileText"])
 
     def openExe(self, title: str) -> None:
-        """Select SCLMapViewer.exe from dialog and set variables accordingly"""
+        """Select SCLMapViewer.exe from dialog and set variables accordingly."""
         selectedFile = self.openFile(title, self.filetypes["exe"], self.sourceDir)
         if not selectedFile == "":
             self.vars["exeFile"].set(selectedFile)
@@ -157,21 +212,39 @@ class CSLapse():
             self.vars["exeFile"].set(constants["noFileText"])
 
     def exportImageOnThread(self, srcFile: str, cmd: List[str]) -> None:
-        """Call this on separate thread - calls the given command to export the given image, records success"""
-        newFileName = None
-        while newFileName is None:
+        """Calls the given command to export the given image, records success.
+        
+        This function should run on a separate thread for each file.
+
+        Exceptions:
+            AbortException: propagate
+            ExportError: non-fatal
+            Other exceptions: non-fatal
+        """
+        while True:
             try:
                 newFileName = exportFile(srcFile, self.tempFolder, cmd, int(self.vars["retry"].get()))
-                #TODO:Ask for confirmation on exporterror, with timer. When timer runs out, try again automatically.
-            except ExportError():
-                pass
-
+                break
+            except AbortException as e:
+                raise AbortException from e
+            except ExportError as e:
+                if not self.gui.nonFatalError(str(e)):
+                    return
+            except Exception as e:
+                if not self.gui.nonFatalError(str(e)):
+                    return
         with self.lock:
             self.imageFiles.append(newFileName)
             self.vars["exportingDone"].set(self.vars["exportingDone"].get() + 1)
+        return
 
     def exportImageFiles(self) -> None:
-        """Calls CSLMapView to export the collected cslmap files one-by-one on separate threads"""
+        """Calls CSLMapView to export the collected cslmap files one-by-one on separate threads.
+        
+        Exceptions:
+            Raise AbortException if abort is requested
+        """
+
         self.gui.setGUI("startExport")
 
         limit = self.vars["videoLength"].get()        
@@ -189,45 +262,90 @@ class CSLapse():
 
         with concurrent.futures.ThreadPoolExecutor(self.vars["threads"].get()) as executor:
             for i in range(limit):
-                #start exporting on a new thread
+                if constants["abort"]:
+                    raise AbortException()
                 executor.submit(self.exportImageOnThread, self.rawFiles[i], cmd[:])
 
         #Sort array as the order might have changed during threading
         self.imageFiles = sorted(self.imageFiles)
         
     def renderVideo(self) -> None:
-        """Creates an mp4 video file from all the exported images"""
+        """Creates an mp4 video file from all the exported images.
+        
+        Exceptions:
+            Raise AbortException if abort is requested
+            AbortException: propagate
+            Cannot open video file: raise AbortException
+            Cannot add image to video: non-fatal
+        """
+        
         self.gui.setGUI("startRender")
-        #create video file
+
         outFile = str(Path(self.sourceDir, f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
+        while True:
+            try:
+                out = cv2.VideoWriter(
+                    outFile,
+                    cv2.VideoWriter_fourcc(*"mp4v"),
+                    int(self.vars["fps"].get()),
+                    (int(self.vars["width"].get()), int(self.vars["width"].get()))
+                    )
+                break
+            except AbortException as e:
+                raise AbortException from e
+            except Exception as e:
+                if not self.gui.abortingError(str(e)):
+                    raise AbortException from e
+
         try:
-            out = cv2.VideoWriter(outFile, cv2.VideoWriter_fourcc(*"mp4v"), int(self.vars["fps"].get()), (int(self.vars["width"].get()), int(self.vars["width"].get())))
-            for file in self.imageFiles:
+            i = 0
+            while i < len(self.imageFiles):
                 if constants["abort"]: raise AbortException()
-                #add frame to video
-                img = cv2.imread(file)
-                out.write(img)
-                with self.lock:
-                    self.vars["renderingDone"].set(self.vars["renderingDone"].get()+ 1)
+                try:
+                    img = cv2.imread(self.imageFiles[i])
+                    out.write(img)
+                    with self.lock:
+                        self.vars["renderingDone"].set(self.vars["renderingDone"].get()+ 1)
+                    i += 1
+                except AbortException as e:
+                    raise AbortException() from e
+                except cv2.error as e:
+                    #For some reason it still cannot catch cv2 errors
+                    if not self.gui.nonFatalError(str(e)):
+                        i += 1
+                except Exception as e:
+                    if not self.gui.nonFatalError(str(e)):
+                        i += 1
+        except AbortException as e:
+            raise AbortException() from e
+        finally:
             out.release()
-        except AbortException as error:
-            out.release()
-            raise AbortException() from error
 
     def run(self) -> None:
-        """Exports images and creatrs video from them"""
+        """Exports images and creatrs video from them.
+        
+        Exceptions:
+            Starting second export: warning
+            AbortException: clean up
+        """
+        if self.isRunning:
+            self.gui.warningPopup("An export operation is already running")
+            return 
         try:
             self.exportImageFiles()
             self.renderVideo()
             self.gui.setGUI("renderDone")
         except AbortException:
+            #TODO: join all running threads here and cleanup afterwards
             self.imageFiles = []
             self.gui.setGUI("defaultState")
+        finally:
+            self.isRunning = False
 
     def abort(self) -> None:
         """Stops currently running process. Impossible to recover state afterwards"""
         constants["abort"] = True
-        exit(1)
+        raise AbortException()
         #TODO: Change the way concurrent threads are killed cause this is not nice
 
     def _resetState(self) -> None:
@@ -237,6 +355,7 @@ class CSLapse():
         self.tempFolder = None
         self.rawFiles = []
         self.imageFiles = []
+        self.isRunning = False
 
         self.vars["exeFile"].set(constants["noFileText"])
         self.vars["sampleFile"].set(constants["noFileText"])
@@ -279,6 +398,7 @@ class CSLapse():
         self.tempFolder = None #Path type, the location where temporary files are created
         self.rawFiles = []    #Collected cslmap files with matching city name
         self.imageFiles = []
+        self.isRunning = False # If currently there is exporting going on
 
         self.filetypes = {
             "exe":[("Executables", "*.exe"), ("All files", "*")],
@@ -532,6 +652,60 @@ class CSLapse():
             elif state == "aborting":
                 self._disable(self.exeSelectBtn, self.sampleSelectBtn, self.fpsEntry, self.imageWidthInput, self.lengthInput, self.threadsEntry, self.zoomSlider, self.zoomEntry, self.abortBtn, self.fitToCanvasBtn, self.originalSizeBtn, self.refreshPreviewBtn)
 
+        def warningPopup(message: str, title: str = "Warning") -> None:
+            """Show warning dialog box.
+            
+            Warnings are for when an action can not be performed currently
+            but the issue can be resolved within the application.
+
+            For more serious issues use errors.
+            """
+            messagebox.showwarning(title=title,message=message)
+
+        def nonFatalError(message: str, title: str = "Error") -> bool:
+            """Show error dialog box.
+
+            Returns True  if the user wants to retry, False otherwise.
+            
+            Non-fatal errors are for when an action can not be performed currently
+            and can not be resolved entirely within the application,
+            but can be resumed and successfully completed from the current state
+            after changing some settings on the user's machine.
+
+            Non-fatal errors can be dismissed.
+            """
+            return messagebox.askretrycancel(title=title,message=message)
+
+        def abortingError(message: str, title: str = "Fatal error") -> None:
+            """Show Aborting error dialog box.
+            
+            Initiates abort if the user cancels.
+
+            Aborting errors are for when an action cannot be performed
+            that is an integral part of the exporting process.
+            Aborting errors do not threaten exitin the rogram,
+            only aborting the exporting process.
+
+            The user can decide to retry and continue exporting or abort it.
+            """
+            message += "\nRetry or exporting will be aborted."
+            if not messagebox.askretrycancel(title=title,message=message):
+                self.external.abort()
+
+        def fatalError(message: str, title: str = "Fatal error") -> bool:
+            """Show fatal error dialgbox.
+
+            Returns True  if the user wants to retry, False otherwise.
+            
+            Fatal errors are for when an action cannot be performed
+            which is an essential part of the program.
+            Fatal errors lead to termination that should be initiated by the caller.
+            
+            The user can decide to retry and continue the program
+            or Cancel and exit prematurely.
+            """
+            message += "\nRetry or the program will exit automatically."
+            return messagebox.askretrycancel(title=title,message=message)
 
         def __init__(self, parent: object):
             self.external = parent
@@ -541,11 +715,11 @@ class CSLapse():
         def submitPressed(self) -> None:
             """Checks if all conditions are satified and starts exporting if yes. Shows warning if not"""
             if self.external.vars["exeFile"].get() == constants["noFileText"]:
-                messagebox.showwarning(title = "Warning", message = constants["texts"]["noExeMessage"])
+                self.warningPopup(constants["texts"]["noExeMessage"])
             elif self.external.vars["sampleFile"].get() == constants["noFileText"]:
-                messagebox.showwarning(title = "Warning", message = constants["texts"]["noSampleMessage"])
+                self.warningPopup(constants["texts"]["noSampleMessage"])
             elif not self.external.vars["videoLength"].get()>0:
-                messagebox.showwarning(title = "Warning", message = constants["texts"]["invalidLengthMessage"])
+                self.warningPopup(constants["texts"]["invalidLengthMessage"])
             else:
                 Thread(target = self.external.run, daemon = True).start()
 
@@ -735,6 +909,6 @@ if __name__ == "__main__":
         },
         "clickable":"hand2",
         "previewCursor":"fleur",
-        "noPreviewImage":"media / NOIMAGE.png"#Path(currentDirectory, "media", "NOIMGAE.png")
+        "noPreviewImage":"media/NOIMAGE.png"#Path(currentDirectory, "media", "NOIMGAE.png")
     }
     main()
