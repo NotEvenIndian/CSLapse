@@ -4,6 +4,7 @@ from pathlib import Path
 import threading
 import concurrent.futures
 from typing import List, Tuple, Any, Callable
+from shutil import rmtree
 
 import cv2
 
@@ -68,14 +69,17 @@ class ThreadCollector(threading.Thread):
         return
 
 
-def rmtree(root: Path) -> None:
-    """Recursively removes directory tree.
+def null(root: Path) -> None:
+    """Recursively removes directory tree. NOT USED
     
     Exceptions:
         No permission to delete file: non-fatal
         Otherwise cannot delete directory: fatal
         Missing file: continue
     """
+
+
+
     children=list(root.iterdir())
     i=0
     while i < len(children):
@@ -95,7 +99,7 @@ def rmtree(root: Path) -> None:
                     i-=1
             finally:
                 i+=1
-    while not constants["abort"]:
+    while 1:
         try:
             root.rmdir()
             return
@@ -105,7 +109,7 @@ def rmtree(root: Path) -> None:
                 raise AbortException from e
 
 
-def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int) -> str:
+def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortEvent: threading.Event = None) -> str:
     """Call CSLMapView to export one image file and return outfile's name.
 
     Exceptions:
@@ -126,8 +130,9 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int) -> str
 
             #Return prematurely on abort
             #Needs to be after export command, otherwise won't work. Probably dead Lock.
-            if constants["abort"]:
-                raise AbortException("Abort initiated on another thread.")
+            if abortEvent is not None:
+                if abortEvent.is_set():
+                    raise AbortException("Abort initiated on another thread.")
 
             #Ensure that the image file was successfully created. 
             assert newFileName.exists()
@@ -135,7 +140,7 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int) -> str
             return str(newFileName)
         except AbortException as error:
             raise AbortException from error
-        except subprocess.CalledProcessError(returncode, cmd) as e:
+        except subprocess.CalledProcessError as e:
             pass
         except AssertionError as e:
             pass
@@ -157,24 +162,26 @@ class CSLapse():
     """Class containing details of the CSLapse GUI application."""
 
     def null(self, * args: Any, ** kwargs: Any) -> None:
-        """Placeholder function, does nothing."""
+        """Placeholder function, do nothing."""
         pass        
 
-    def createTempFolder(self, location: Path) -> Path:
-        """prepare temporary directory and delete old one.
-        
-        Exceptions:
-            Cannot create directory: fatal
+    def clearTempFolder(self) -> None:
         """
-        #Remove previous tepmorary directory
-        if self.tempFolder is not None and self.tempFolder.exists(): rmtree(self.tempFolder)
-        self.tempFolder = Path(location, "temp" + self.timestamp)
-        #Empty temporary directory if already exists - it shouldn't
-        if self.tempFolder.exists(): rmtree(self.tempFolder)
-        try:
-            self.tempFolder.mkdir()
-        except Exception as e:
-            O.gui.askFatalError(str(e))
+        Remove the all files from self.tempFolder, create Directory if doesn't exist.
+
+        If tempFolder is None, or doesnt exist, create the folder and return.
+        If a file can not be removed, show a warning.
+        If an other issue comes up: 
+        """
+        while 1:
+            try:
+                with self.lock:
+                    if self.tempFolder.exists():
+                        rmtree(self.tempFolder, ignore_errors = False)
+                    self.tempFolder.mkdir()
+                return
+            except Exception as e:
+                self.gui.askFatalError(str(e))
 
     def openFile(self, title: str, filetypes: List[Tuple], defDir: str = None) -> str:
         """Open file opening dialog box and return the full path to the selected file."""
@@ -185,7 +192,8 @@ class CSLapse():
         sampleFile = Path(sampleFile)
         self.sourceDir = sampleFile.parent
         self.cityName = sampleFile.stem.split("-")[0]
-        self.createTempFolder(self.sourceDir)
+        self.tempFolder = Path(self.sourceDir, f"temp{self.timestamp}")
+        self.clearTempFolder()
 
     def collectRawFiles(self) -> List[Path]:
         """Make an array of files whose name matches the city's name."""
@@ -196,7 +204,8 @@ class CSLapse():
             ))
 
     def exportSample(self, sample: str, retry: int) -> None:
-        """Export png from the cslmap file that will be the given frame of the video.
+        """
+        Export png from the cslmap file that will be the given frame of the video.
 
         This function should run on a separate thread.
         
@@ -211,12 +220,12 @@ class CSLapse():
                     sample, 
                     self.tempFolder, 
                     self.collections["sampleCommand"],
-                    self.vars["retry"].get()
+                    self.vars["retry"].get(),
+                    self.abortEvent
                     ) 
                 with self.lock:
                     self.vars["previewSource"] = Image.open(exported)
-                    self.gui.preview.justExported()
-                self.gui.setGUI("previewLoaded")
+                self.previewLoadedEvent.set()
                 return
             except AbortException:
                 self.gui.setGUI("previewLoadError")
@@ -284,7 +293,7 @@ class CSLapse():
             self.vars["exeFile"].set(constants["noFileText"])
 
     def exportImageOnThread(self, srcFile: str, cmd: List[str]) -> None:
-        """Calls the given command to export the given image, records success.
+        """Call the given command to export the given image, add filename to self.imageFiles.
         
         This function should run on a separate thread for each file.
 
@@ -295,7 +304,7 @@ class CSLapse():
         """
         while True:
             try:
-                newFileName = exportFile(srcFile, self.tempFolder, cmd, int(self.vars["retry"].get()))
+                newFileName = exportFile(srcFile, self.tempFolder, cmd, int(self.vars["retry"].get()), self.abortEvent)
                 break
             except AbortException as e:
                 raise AbortException from e
@@ -310,37 +319,41 @@ class CSLapse():
             self.vars["exportingDone"].set(self.vars["exportingDone"].get() + 1)
         return
 
-    def prepare(self) -> None:
-        """Prepares variables and envireonment for exporting."""
-        if self.isRunning:
+    def export(self) -> None:
+        """Handle the export process."""
+        if self.isRunning or self.isAborting:
             self.gui.showWarning("An export operation is already running.")
             return
+        self.prepare()
+        threading.Thread(target = self.run, daemon = True).start()
+
+    def prepare(self) -> None:
+        """Prepare variables and environment for exporting."""
         self.isRunning = True
-        constants["abort"] = False
-        if self.tempFolder is None:
-            self.createTempFolder(self.sourceDir)
+        self.isAborting = False
+        self.abortEvent.clear()
+        self.clearTempFolder()
         self.imageFiles = []
         self.gui.setGUI("startExport")
 
     def run(self) -> None:
-        """Exports images and creatrs video from them.
+        """Export images and create video from them.
         
         Exceptions:
             Starting second export: warning
-            AbortException: clean up
+            AbortException: return
         """
         try:
             self.exportImageFiles()
-            self.gui.setGUI("startRender")
+            self.imageFilesExportedEvent.set()
             self.renderVideo()
-            self.gui.setGUI("renderDone")
-            self.isRunning = False
+            self.exportingDoneEvent.set()
         except AbortException as e:
-            constants["abort"] = True
+            self.abortEvent.set()
             return
 
     def exportImageFiles(self) -> None:
-        """Calls CSLMapView to export the collected cslmap files one-by-one on separate threads.
+        """Call CSLMapView to export the collected cslmap files one-by-one on separate threads.
         
         Exceptions:
             Raise AbortException if abort is requested
@@ -367,14 +380,14 @@ class CSLapse():
                 self.futures.append(
                     executor.submit(self.exportImageOnThread, self.rawFiles[i], cmd[:])
                 )
-        if constants["abort"]:
+        if self.abortEvent.is_set():
             raise AbortException("Abort initiated on another thread.")
 
         #Sort array as the order might have changed during threading
         self.imageFiles = sorted(self.imageFiles)
         
     def renderVideo(self) -> None:
-        """Creates an mp4 video file from all the exported images.
+        """Create an mp4 video file from all the exported images.
         
         Exceptions:
             Raise AbortException if abort is requested
@@ -405,7 +418,7 @@ class CSLapse():
         try:
             i = 0
             while i < len(self.imageFiles):
-                if constants["abort"]:
+                if self.abortEvent.is_set():
                     raise AbortException("Abort initiated on another thread.")
                 try:
                     img = cv2.imread(self.imageFiles[i])
@@ -428,44 +441,46 @@ class CSLapse():
             out.release()
 
     def abort(self, event: tkinter.Event = None) -> None:
-        """Stops currently running export process.
+        """Stop currently running export process.
         
-        If called on the main thread, collects all running threads.
-        Otherwise raises an exception.
+        If called on the main thread, collect all running threads.
+        Otherwise raise an exception.
 
         Impossible to recover state afterwards.
         """
-        if not self.isRunning:
-            self.gui.showWarning("No export process to abort or an abort process is already running.")
+        if self.isAborting or not self.isRunning :
+            self.gui.showWarning("Cannot abort export process: No export process to abort or an abort process is already running.")
+            self.abortEvent.clear()
             return
 
-        constants["abort"] = True
         if threading.current_thread() is not threading.main_thread():
-            #self.gui.root.event_generate('<<Abort>>')
-            #TODO: find a way to trigger events from an other thread
-            # this is not working as tkinter needs everything on the same thread
             raise AbortException("Abort initiated.")
         else:
+            self.isAborting = True
             self.isRunning = False
             self.gui.setGUI("aborting")
 
             self.vars["threadCollecting"].set(0)
-            collector = ThreadCollector([threading.current_thread()], self.futures, counter = self.vars["threadCollecting"], callback=self.cleanup)
+            collector = ThreadCollector([threading.current_thread()], self.futures, counter = self.vars["threadCollecting"], callback=self.abortFinishedEvent.set)
             self.gui.progressPopup(self.vars["threadCollecting"], collector.total())
             collector.start()
-        self.gui.setGUI("defaultState")
 
-    def cleanup(self) -> None:
-        """Cleans up variables and environment after exporting."""
-        constants["abort"] = False
-        self.isRunning = False
-        if self.tempFolder is not None:
-            rmtree(self.tempFolder)
-        self.tempFolder = None
+    def cleanupAfterSuccess(self) -> None:
+        """Clean up variables and environment after successful exporting."""
+        self.clearTempFolder()
         self.imageFiles = []
+        self.isRunning = False
+
+    def cleanupAfterAbort(self) -> None:
+        """Clean up variables and environment after aborted exporting."""
+        self.clearTempFolder()
+        self.imageFiles = []
+        self.gui.setGUI("afterAbort")
+        self.abortEvent.clear()
+        self.isAborting = False
 
     def _resetState(self) -> None:
-        """Sets all variables to the default state."""
+        """Set all variables to the default state."""
         self.sourceDir = None
         self.cityName = None
         self.tempFolder = None
@@ -485,12 +500,50 @@ class CSLapse():
         self.vars["exportingDone"].set(0)
         self.vars["renderingDone"].set(0)
     
+    def checkThreadEvents(self) -> None:
+        """Check if the threading events are set, repeat after 100 ms."""
+        if self.previewLoadedEvent.is_set():
+            self.previewLoadedEvent.clear()
+            self.gui.preview.justExported()
+            self.gui.setGUI("previewLoaded")
+        if self.abortEvent.is_set():
+            if not self.isAborting:
+                self.abort()
+        if self.threadsCollectedEvent.is_set():
+            self.threadsCollectedEvent.clear()
+            self.gui.setGUI("defaultState")
+        if self.imageFilesExportedEvent.is_set():
+            self.imageFilesExportedEvent.clear()
+            self.gui.setGUI("startRender")
+        if self.exportingDoneEvent.is_set():
+            self.exportingDoneEvent.clear()
+            self.cleanupAfterSuccess()
+            self.gui.setGUI("renderDone")
+            self.isRunning = False
+        if self.abortFinishedEvent.is_set():
+            self.abortFinishedEvent.clear()
+            self.cleanupAfterAbort()
+        self.gui.root.after(100, self.checkThreadEvents)
+
     def __init__(self):
+
         #timestamp to have a unique name
         self.timestamp = str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
         self.gui = CSLapse.GUI(self)
         self.lock = threading.Lock()
 
+        self.abortEvent = threading.Event()
+        self.abortEvent.clear()
+        self.previewLoadedEvent = threading.Event()
+        self.previewLoadedEvent.clear()
+        self.threadsCollectedEvent = threading.Event()
+        self.threadsCollectedEvent.clear()
+        self.imageFilesExportedEvent = threading.Event()
+        self.imageFilesExportedEvent.clear()
+        self.exportingDoneEvent = threading.Event()
+        self.exportingDoneEvent.clear()
+        self.abortFinishedEvent = threading.Event()
+        self.abortFinishedEvent.clear()
 
         self.vars = {
             "exeFile":tkinter.StringVar(value = constants["noFileText"]),
@@ -517,6 +570,7 @@ class CSLapse():
         self.imageFiles = []
         self.futures = []   # concurrent.futures.Future objects that are exporting images
         self.isRunning = False # If currently there is exporting going on
+        self.isAborting = False # If an abort pre=ocess is in progress
 
         self.filetypes = {
             "exe":[("Executables", "*.exe"), ("All files", "*")],
@@ -530,10 +584,11 @@ class CSLapse():
         self._resetState()
         self.gui.configureWindow()
         self.gui.setGUI("defaultState")
+        self.gui.root.after(0, self.checkThreadEvents)
 
     def __del__(self):
-        if self.isRunning:
-            self.abort()
+        if self.tempFolder.exists():
+            rmtree(self.tempFolder, ignore_errors = True)
     
     class GUI(object):
         """ Object that contains the GUI elements and methods of the program."""
@@ -720,13 +775,14 @@ class CSLapse():
             self._createBindings()
 
         def _createStyles(self) -> None:
+            """Create ttk styles. Not used."""
             s = ttk.Style()
 
         def _createBindings(self) -> None:
             """Bind events to GUI widgets"""
             self.preview.createBindings()
             self.root.event_add('<<Abort>>', '<Control-C>')
-            self.root.bind('<<Abort>>', self.external.abort)
+            self.root.bind('<<Abort>>', lambda event: self.external.abortEvent.set())
 
         def _enable(self, * args: tkinter.Widget) -> None:
             """Set all argument widgets to enabled"""
@@ -749,8 +805,12 @@ class CSLapse():
                 widget.grid_remove()
 
         def setGUI(self, state: str) -> None:
-            """Set the GUI to a predefined state. This sets the GUI variables and widgets.
-            state should be one of ["startExport", "startRender", "renderDone", "defaultState"]"""
+            """
+            Set the GUI to a predefined state.
+            
+            This sets the GUI variables and widgets.
+            state should be one of ["startExport", "startRender", "renderDone", "defaultState"] and more.
+            """
             if state == "startExport":
                 self.external.vars["exportingDone"].set(0)
                 self.exportingProgress.config(maximum = self.external.vars["videoLength"].get())
@@ -878,7 +938,6 @@ class CSLapse():
                     self.fitToCanvasBtn,
                     self.originalSizeBtn
                 )
-                print(self.preview.canvas.winfo_screenwidth(), self.preview.canvas.winfo_screenheight())
                 self._show(
                     self.refreshPreviewBtn,
                     self.fitToCanvasBtn,
@@ -904,9 +963,36 @@ class CSLapse():
                     self.originalSizeBtn, 
                     self.refreshPreviewBtn
                 )
+                self.root.configure(cursor = constants["previewCursor"])
+            elif state == "afterAbort":
+                for p in self.popups:
+                    p.destroy()
+                self._disable(self.abortBtn)
+                self._enable(
+                    self.exeSelectBtn,
+                    self.sampleSelectBtn,
+                    self.fpsEntry, 
+                    self.imageWidthInput, 
+                    self.lengthInput, 
+                    self.threadsEntry, 
+                    self.zoomSlider, 
+                    self.zoomEntry, 
+                    self.abortBtn, 
+                    self.fitToCanvasBtn, 
+                    self.originalSizeBtn, 
+                    self.refreshPreviewBtn
+                )
+                self._hide(
+                    self.progressFrame,
+                    self.abortBtn
+                )
+                self._show(self.submitBtn)
+                self.root.configure(cursor = "")
+                self.preview.canvas.configure(cursor = constants["previewCursor"])
 
         def showWarning(self, message: str, title: str = "Warning") -> None:
-            """Show warning dialog box.
+            """
+            Show warning dialog box.
             
             Warnings are for when an action can not be performed currently
             but the issue can be resolved within the application.
@@ -916,7 +1002,8 @@ class CSLapse():
             messagebox.showwarning(title, message)
 
         def askNonFatalError(self, message: str, title: str = "Error") -> bool:
-            """Show error dialog box.
+            """
+            Show error dialog box.
 
             Returns True  if the user wants to retry, False otherwise.
             
@@ -930,7 +1017,8 @@ class CSLapse():
             return messagebox.askretrycancel(title, message)
 
         def askAbortingError(self, message: str, title: str = "Fatal error") -> None:
-            """Show Aborting error dialog box.
+            """
+            Show Aborting error dialog box.
             
             Initiates abort if the user cancels.
 
@@ -946,7 +1034,8 @@ class CSLapse():
                 self.root.event_generate('<<Abort>>', when = "tail")
 
         def askFatalError(self, message: str, title: str = "Fatal error") -> bool:
-            """Show fatal error dialgbox.
+            """
+            Show fatal error dialgbox.
 
             Returns True  if the user wants to retry, False otherwise.
             
@@ -961,7 +1050,7 @@ class CSLapse():
             return messagebox.askretrycancel(title, message)
 
         def progressPopup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
-            """Returns a GUI popup window with a progressbar tied to var."""
+            """Return a GUI popup window with a progressbar tied to var."""
             win = tkinter.Toplevel(cursor = "watch")
             label = ttk.Label(win, text = "Collecting threads: ")
             progressLabel = ttk.Label(win, textvariable = var)
@@ -985,7 +1074,7 @@ class CSLapse():
             self.root.title("CSLapse")
 
         def submitPressed(self) -> None:
-            """Checks if all conditions are satified and starts exporting if yes. Shows warning if not"""
+            """Check if all conditions are satified and start exporting if yes. Show warning if not"""
             if self.external.vars["exeFile"].get() == constants["noFileText"]:
                 self.showWarning(constants["texts"]["noExeMessage"])
             elif self.external.vars["sampleFile"].get() == constants["noFileText"]:
@@ -993,20 +1082,19 @@ class CSLapse():
             elif not self.external.vars["videoLength"].get()>0:
                 self.showWarning(constants["texts"]["invalidLengthMessage"])
             else:
-                self.external.prepare()
-                threading.Thread(target = self.external.run, daemon = True).start()
+                self.external.export()
 
         def abortPressed(self) -> None:
-            """Asks user if really wants to kill. Kills if yes, nothing if no."""
+            """Ask user if really wants to abort. Generate abort tinter event if yes."""
             if messagebox.askyesno(title = "Abort action?", message = constants["texts"]["askAbort"]):
                 self.root.event_generate('<<Abort>>', when = "tail")
 
         def refreshPressed(self) -> None:
-            """Handles refresh button press event"""
+            """Call function to refresh the preview image."""
             self.external.refreshPreview(manual = True)
 
         def configureWindow(self) -> None:
-            """Sets up widgets, event bindings, grid for the main window"""
+            """Set up widgets, event bindings, grid for the main window"""
 
             self._createStyles()
 
@@ -1032,7 +1120,8 @@ class CSLapse():
             self._configure()
 
         class Preview(object):
-            """ Object that handles the preview functionaltiy in the GUI""" 
+            """ Object that handles the preview functionaltiy in the GUI"""
+
             def __init__(self, parent: object):
                 self.gui = parent
                 self.canvas = tkinter.Canvas(self.gui.canvasFrame, cursor = "")
@@ -1083,11 +1172,11 @@ class CSLapse():
                 self.imageY = (self.fullHeight-self.imageHeight * self.scaleFactor) / 2
 
             def scaleToOriginal(self) -> None:
-                """Rescale to the original size of the preview image"""
+                """Rescale to the original size of the preview image."""
                 self.resizeImage(1)
 
             def justExported(self) -> None:
-                """Show newly exported preview image"""
+                """Show newly exported preview image."""
                 self.imageWidth = self.gui.external.vars["width"].get()
                 self.imageHeight = self.gui.external.vars["width"].get()
 
@@ -1109,7 +1198,7 @@ class CSLapse():
                 self.canvas.itemconfigure("placeholder", state = "hidden")
 
             def resized(self, event: tkinter.Event) -> None:
-                """Handle change in the canvas's size"""
+                """Handle change in the canvas's size."""
                 if self.active:
                     #Center of the canvas should stay the center of the canvas when the window is resized
                     self.imageX = ((self.imageX+self.imageWidth * self.scaleFactor / 2) * event.width / self.fullWidth)-(self.imageWidth * self.scaleFactor / 2)
@@ -1123,12 +1212,12 @@ class CSLapse():
                 self.fullHeight = event.height
 
             def scrolled(self, event: tkinter.Event) -> None:
-                """Handle scrolling (zoom) on canvas"""
+                """Handle scrolling event (zoom) on canvas."""
                 if self.active:
                     self.resizeImage(self.scaleFactor * (1+6 /(event.delta)))
 
             def dragged(self, event: tkinter.Event) -> None:
-                """Handle dragging (panning) on canvas"""
+                """Handle dragging event (panning) on canvas."""
                 if self.active:
                     deltaX = event.x-self.lastClick[0]
                     deltaY = event.y-self.lastClick[1]
@@ -1138,12 +1227,12 @@ class CSLapse():
                     self.lastClick = (event.x, event.y)
 
             def clicked(self, event: tkinter.Event) -> None:
-                """Handle buttonpress event on canvas"""
+                """Handle buttonpress event on canvas."""
                 if self.active:
                     self.lastClick = (event.x, event.y)
 
             def areasChanged(self) -> None:
-                """Currently out of use: Reflect change in export areas on preview"""
+                """Currently out of use: Reflect change in export areas on preview."""
                 wRatio = self.imageWidth / self.previewAreas
                 self.printAreaX = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * wRatio
                 self.printAreaW = wRatio * float(self.gui.external.vars["areas"].get())
@@ -1158,7 +1247,6 @@ def main() -> None:
     collector = ThreadCollector([threading.current_thread()])
     collector.start()
     collector.join()
-    O.cleanup()
 
 
 if __name__ == "__main__":
