@@ -63,50 +63,11 @@ class ThreadCollector(threading.Thread):
     def run(self) -> None:
         for t in self._garbage_threads:
             t.join()
-            self._counter.set(self._counter.get() + 1)
+            if self._counter is not None:
+                self._counter.set(self._counter.get() + 1)
         if self._callback is not None:
             self._callback()
         return
-
-
-def null(root: Path) -> None:
-    """Recursively removes directory tree. NOT USED
-    
-    Exceptions:
-        No permission to delete file: non-fatal
-        Otherwise cannot delete directory: fatal
-        Missing file: continue
-    """
-
-
-
-    children=list(root.iterdir())
-    i=0
-    while i < len(children):
-        if children[i].is_dir():
-            rmtree(children[i])
-        else:
-            try:
-                children[i].unlink(missing_ok=True)
-            except PermissionError as e:
-                if O.gui.askNonFatalError(str(e)):
-                    i-=1
-            except Exception as e:
-                if not O.gui.askFatalError(str(e)):
-                    #TODO: change this to exit
-                    raise AbortException() from e
-                else:
-                    i-=1
-            finally:
-                i+=1
-    while 1:
-        try:
-            root.rmdir()
-            return
-        except Exception as e:
-            if not O.gui.askFatalError(str(e)):
-                #TODO: change this to exit
-                raise AbortException from e
 
 
 def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortEvent: threading.Event = None) -> str:
@@ -178,7 +139,9 @@ class CSLapse():
                 with self.lock:
                     if self.tempFolder.exists():
                         rmtree(self.tempFolder, ignore_errors = False)
+                        print("removed tempfolder")
                     self.tempFolder.mkdir()
+                    print("Created tempfolder")
                 return
             except Exception as e:
                 self.gui.askFatalError(str(e))
@@ -449,7 +412,7 @@ class CSLapse():
         Impossible to recover state afterwards.
         """
         if self.isAborting or not self.isRunning :
-            self.gui.showWarning("Cannot abort export process: No export process to abort or an abort process is already running.")
+            self.gui.showWarning(constants["texts"]["abortAlreadyRunning"])
             self.abortEvent.clear()
             return
 
@@ -478,6 +441,8 @@ class CSLapse():
         self.gui.setGUI("afterAbort")
         self.abortEvent.clear()
         self.isAborting = False
+        if self.exitEvent.is_set():
+            self.gui.root.destroy()
 
     def _resetState(self) -> None:
         """Set all variables to the default state."""
@@ -544,6 +509,8 @@ class CSLapse():
         self.exportingDoneEvent.clear()
         self.abortFinishedEvent = threading.Event()
         self.abortFinishedEvent.clear()
+        self.exitEvent = threading.Event()
+        self.exitEvent.clear()
 
         self.vars = {
             "exeFile":tkinter.StringVar(value = constants["noFileText"]),
@@ -586,13 +553,15 @@ class CSLapse():
         self.gui.setGUI("defaultState")
         self.gui.root.after(0, self.checkThreadEvents)
 
-    def __del__(self):
-        if self.tempFolder.exists():
+    def __enter__(self) -> object:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.tempFolder is not None and self.tempFolder.exists():
             rmtree(self.tempFolder, ignore_errors = True)
     
     class GUI(object):
         """ Object that contains the GUI elements and methods of the program."""
-        #TODO: Fix clean exit when user presses the X button
 
         def _createMainFrame(self, cb, vars, filetypes, texts) -> None:
             """Create the widgets in the left main window"""
@@ -783,6 +752,7 @@ class CSLapse():
             self.preview.createBindings()
             self.root.event_add('<<Abort>>', '<Control-C>')
             self.root.bind('<<Abort>>', lambda event: self.external.abortEvent.set())
+            self.root.protocol("WM_DELETE_WINDOW", self.closePressed)
 
         def _enable(self, * args: tkinter.Widget) -> None:
             """Set all argument widgets to enabled"""
@@ -1058,11 +1028,21 @@ class CSLapse():
             totalLabel = ttk.Label(win, text = maximum)
             progressBar = ttk.Progressbar(win, variable = var, maximum = maximum)
 
-            label.grid(row = 0, column = 0)
-            progressLabel.grid(row = 0, column = 1)
-            ofLabel.grid(row = 0, column = 2)
-            totalLabel.grid(row = 0, column = 3)
-            progressBar.grid(row = 1, column = 0, columnspan = 4)
+            label.grid(row = 0, column = 0, sticky = tkinter.EW)
+            progressLabel.grid(row = 0, column = 1, sticky = tkinter.EW)
+            ofLabel.grid(row = 0, column = 2, sticky = tkinter.EW)
+            totalLabel.grid(row = 0, column = 3, sticky = tkinter.EW)
+            progressBar.grid(row = 1, column = 0, columnspan = 5, sticky = tkinter.EW)
+
+            win.columnconfigure(4, weight = 1)
+            win.configure(padx = 5, pady = 5, border = 1, relief = tkinter.SOLID)
+
+            win.overrideredirect(1)
+            w = 400
+            h = 60
+            x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+            y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+            win.geometry(f"{w}x{h}+{x}+{y}")
 
             self.popups.append(win)
             return win
@@ -1074,15 +1054,26 @@ class CSLapse():
             self.root.title("CSLapse")
 
         def submitPressed(self) -> None:
-            """Check if all conditions are satified and start exporting if yes. Show warning if not"""
-            if self.external.vars["exeFile"].get() == constants["noFileText"]:
-                self.showWarning(constants["texts"]["noExeMessage"])
-            elif self.external.vars["sampleFile"].get() == constants["noFileText"]:
-                self.showWarning(constants["texts"]["noSampleMessage"])
-            elif not self.external.vars["videoLength"].get()>0:
-                self.showWarning(constants["texts"]["invalidLengthMessage"])
-            else:
-                self.external.export()
+            """Check if all conditions are satified and start exporting if yes. Show warning if not."""
+            try:
+                if self.external.vars["exeFile"].get() == constants["noFileText"]:
+                    self.showWarning(constants["texts"]["noExeMessage"])
+                elif self.external.vars["sampleFile"].get() == constants["noFileText"]:
+                    self.showWarning(constants["texts"]["noSampleMessage"])
+                elif not self.external.vars["fps"].get() > 0:
+                    self.showWarning(constants["texts"]["invalidFPSMessage"])
+                elif not self.external.vars["width"].get() > 0:
+                    self.showWarning(constants["texts"]["invalidWidthMessage"])
+                elif not self.external.vars["videoLength"].get() > 0:
+                    self.showWarning(constants["texts"]["invalidLengthMessage"])
+                elif not self.external.vars["threads"].get() > 0:
+                    self.showWarning(constants["texts"]["invalidThreadsMessage"])
+                elif not self.external.vars["retry"].get() > -1:
+                    self.showWarning(constants["texts"]["invalidRetryMessage"])
+                else:
+                    self.external.export()
+            except Exception:
+                self.showWarning("Something went wrong. Check your settings and try again.")
 
         def abortPressed(self) -> None:
             """Ask user if really wants to abort. Generate abort tinter event if yes."""
@@ -1092,6 +1083,18 @@ class CSLapse():
         def refreshPressed(self) -> None:
             """Call function to refresh the preview image."""
             self.external.refreshPreview(manual = True)
+
+        def closePressed(self) -> None:
+            """Aks user if really wnats to quit. If yes, initiate abort and exit afterwards"""
+            if self.external.isRunning:
+                if messagebox.askyesno(title = "Are you sure you want to exit?", message = constants["texts"]["askAbort"]):
+                    self.external.exitEvent.set()
+                    self.root.event_generate('<<Abort>>', when = "tail")
+            elif self.external.isAborting:
+                self.external.exitEvent.set()
+                self.showWarning(constants["texts"]["exitAfterAbortEnded"])
+            else:
+                self.root.destroy()
 
         def configureWindow(self) -> None:
             """Set up widgets, event bindings, grid for the main window"""
@@ -1242,11 +1245,8 @@ class CSLapse():
 
 
 def main() -> None:
-    O = CSLapse()
-    O.gui.root.mainloop()
-    collector = ThreadCollector([threading.current_thread()])
-    collector.start()
-    collector.join()
+    with CSLapse() as O:
+        O.gui.root.mainloop()
 
 
 if __name__ == "__main__":
@@ -1267,7 +1267,13 @@ if __name__ == "__main__":
             "noExeMessage":"Select CSLMapviewer.exe first!",
             "noSampleMessage":"Select a city file first!",
             "invalidLengthMessage":"Invalid video length!",
-            "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost."
+            "invalidLengthMessage":"Invalid video length!",
+            "invalidLengthMessage":"Invalid video length!",
+            "invalidLengthMessage":"Invalid video length!",
+            "invalidLengthMessage":"Invalid video length!",
+            "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost.",
+            "abortAlreadyRunning":"Cannot abort export process: No export process to abort or an abort process is already running.",
+            "exitAfterAbortEnded":"An abort operation is running. The program will exit once it has finished."
             
         },
         "clickable":"hand2",
