@@ -17,7 +17,7 @@ from PIL import ImageTk, Image
 
 # I know the code is extremely badly organized and the classes make almost no difference.
 #
-# This project was a huge learning experience for me as I have never worked with anz of
+# This project was a huge learning experience for me as I have never worked with any of
 # these modules before. Nor have I made a program this large. Or released an application for public use.
 #
 # Suggestions for any sort of improvement are welcome.
@@ -139,9 +139,7 @@ class CSLapse():
                 with self.lock:
                     if self.tempFolder.exists():
                         rmtree(self.tempFolder, ignore_errors = False)
-                        print("removed tempfolder")
                     self.tempFolder.mkdir()
-                    print("Created tempfolder")
                 return
             except Exception as e:
                 self.gui.askFatalError(str(e))
@@ -177,30 +175,29 @@ class CSLapse():
             ExportError: non-fatal
             Other exceptions: non-fatal
         """
-        while True:
-            try:
-                exported = exportFile(
-                    sample, 
-                    self.tempFolder, 
-                    self.collections["sampleCommand"],
-                    self.vars["retry"].get(),
-                    self.abortEvent
-                    ) 
-                with self.lock:
-                    self.vars["previewSource"] = Image.open(exported)
-                self.previewLoadedEvent.set()
+        try:
+            exported = exportFile(
+                sample, 
+                self.tempFolder, 
+                self.collections["sampleCommand"],
+                1,
+                self.abortEvent
+                ) 
+            with self.lock:
+                self.vars["previewSource"] = Image.open(exported)
+            self.previewLoadedEvent.set()
+            return
+        except AbortException:
+            self.previewLoadErrorEvent.set()
+            return
+        except ExportError as e:
+            if not self.gui.askNonFatalError(str(e)):
+                self.previewLoadErrorEvent.set()
                 return
-            except AbortException:
-                self.gui.setGUI("previewLoadError")
+        except Exception as e:
+            if not self.gui.askNonFatalError(str(e)):
+                self.previewLoadErrorEvent.set()
                 return
-            except ExportError as e:
-                if not self.gui.askNonFatalError(str(e)):
-                    self.gui.setGUI("previewLoadError")
-                    return
-            except Exception as e:
-                if not self.gui.askNonFatalError(str(e)):
-                    self.gui.setGUI("previewLoadError")
-                    return
 
     def refreshPreview(self, manual: bool = False) -> None:
         """Export the preview CSLMap file with current settings."""
@@ -297,6 +294,7 @@ class CSLapse():
         self.abortEvent.clear()
         self.clearTempFolder()
         self.imageFiles = []
+        self.futures = []
         self.gui.setGUI("startExport")
 
     def run(self) -> None:
@@ -309,6 +307,7 @@ class CSLapse():
         try:
             self.exportImageFiles()
             self.imageFilesExportedEvent.set()
+            self.gui.setGUI("startRender")
             self.renderVideo()
             self.exportingDoneEvent.set()
         except AbortException as e:
@@ -321,10 +320,6 @@ class CSLapse():
         Exceptions:
             Raise AbortException if abort is requested
         """
-
-        self.gui.setGUI("startExport")
-
-        self.futures = []
         limit = self.vars["videoLength"].get()        
         cmd = [
             self.vars["exeFile"].get(),
@@ -358,8 +353,6 @@ class CSLapse():
             Cannot open video file: raise AbortException
             Cannot add image to video: non-fatal
         """
-        
-        self.gui.setGUI("startRender")
 
         outFile = str(Path(self.sourceDir, f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
         while True:
@@ -432,12 +425,14 @@ class CSLapse():
         """Clean up variables and environment after successful exporting."""
         self.clearTempFolder()
         self.imageFiles = []
+        self.futures = []
         self.isRunning = False
 
     def cleanupAfterAbort(self) -> None:
         """Clean up variables and environment after aborted exporting."""
         self.clearTempFolder()
         self.imageFiles = []
+        self.futures = []
         self.gui.setGUI("afterAbort")
         self.abortEvent.clear()
         self.isAborting = False
@@ -471,6 +466,9 @@ class CSLapse():
             self.previewLoadedEvent.clear()
             self.gui.preview.justExported()
             self.gui.setGUI("previewLoaded")
+        if self.previewLoadErrorEvent.is_set():
+            self.previewLoadErrorEvent.clear()
+            self.gui.setGUI("previewLoadError")
         if self.abortEvent.is_set():
             if not self.isAborting:
                 self.abort()
@@ -501,6 +499,8 @@ class CSLapse():
         self.abortEvent.clear()
         self.previewLoadedEvent = threading.Event()
         self.previewLoadedEvent.clear()
+        self.previewLoadErrorEvent = threading.Event()
+        self.previewLoadErrorEvent.clear()
         self.threadsCollectedEvent = threading.Event()
         self.threadsCollectedEvent.clear()
         self.imageFilesExportedEvent = threading.Event()
@@ -557,36 +557,37 @@ class CSLapse():
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """Clean up tempFolder"""
         if self.tempFolder is not None and self.tempFolder.exists():
             rmtree(self.tempFolder, ignore_errors = True)
+        collector = ThreadCollector([threading.current_thread()], counter = self.vars["threadCollecting"])
+        collector.start()
     
     class GUI(object):
-        """ Object that contains the GUI elements and methods of the program."""
+        """Object that contains the GUI elements and methods of the program."""
 
         def _createMainFrame(self, cb, vars, filetypes, texts) -> None:
             """Create the widgets in the left main window"""
             self.mainFrame = ttk.Frame(self.root)
             self.fileSelectionBox = ttk.Labelframe(self.mainFrame, text = "Files")
             self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
-            self.exePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["exeFile"], cursor = constants["clickable"])
-            self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command =
-                lambda: cb["openExe"](texts["openExeTitle"]))
+            self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exeFile"], cursor = constants["clickable"])
+            self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = cb["openExe"])
             self.sampleSelectLabel = ttk.Label(self.fileSelectionBox, text = "Select a cslmap file of your city")
             self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sampleFile"], cursor = constants["clickable"])
-            self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command =
-                lambda: cb["openSample"](texts["openSampleTitle"]))
+            self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = cb["openSample"])
             self.filesLoading = ttk.Progressbar(self.fileSelectionBox)
             self.filesNumLabel = ttk.Label(self.fileSelectionBox, textvariable = vars["numOfFiles"])
             self.filesLoadedLabel = ttk.Label(self.fileSelectionBox, text = "files found")
 
             self.videoSettingsBox = ttk.Labelframe(self.mainFrame, text = "Video settings")
             self.fpsLabel = ttk.Label(self.videoSettingsBox, text = "Frames per second: ")
-            self.fpsEntry = ttk.Entry(self.videoSettingsBox, width = 5, textvariable = vars["fps"])
+            self.fpsEntry = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["fps"])
             self.imageWidthLabel = ttk.Label(self.videoSettingsBox, text = "Width:")
-            self.imageWidthInput = ttk.Entry(self.videoSettingsBox, width = 5, textvariable = vars["width"])
+            self.imageWidthInput = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["width"])
             self.imageWidthUnit = ttk.Label(self.videoSettingsBox, text = "pixels")
-            self.lengthLabel = ttk.Label(self.videoSettingsBox, width = 5, text = "Video length:")
-            self.lengthInput = ttk.Entry(self.videoSettingsBox, textvariable = vars["videoLength"])
+            self.lengthLabel = ttk.Label(self.videoSettingsBox, text = "Video length:")
+            self.lengthInput = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["videoLength"])
             self.lengthUnit = ttk.Label(self.videoSettingsBox, text = "frames")
 
             self.advancedSettingBox = ttk.Labelframe(self.mainFrame, text = "Advanced")
@@ -607,14 +608,11 @@ class CSLapse():
             self.renderingTotalLabel = ttk.Label(self.progressFrame)
             self.renderingProgress = ttk.Progressbar(self.progressFrame, orient = "horizontal", mode = "determinate", variable = vars["renderingDone"])
 
-            self.submitBtn = ttk.Button(self.mainFrame, text = "Export", cursor = constants["clickable"], command =
-                lambda: cb["submit"]())
-            self.abortBtn = ttk.Button(self.mainFrame, text = "Abort", cursor = constants["clickable"], command =
-                lambda:cb["abort"]())
+            self.submitBtn = ttk.Button(self.mainFrame, text = "Export", cursor = constants["clickable"], command = cb["submit"])
+            self.abortBtn = ttk.Button(self.mainFrame, text = "Abort", cursor = constants["clickable"], command = cb["abort"])
 
         def _createPreviewFrame(self, cb, vars) -> None:
             """Create widgets related to the preview canvas, initialize Preview object"""
-            self.middleBar = ttk.Separator(self.root, orient = "vertical")
 
             self.previewFrame = ttk.Frame(self.root)
 
@@ -629,7 +627,7 @@ class CSLapse():
 
             self.canvasSettingFrame = ttk.Frame(self.previewFrame)
             self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-            self.zoomEntry = ttk.Entry(self.canvasSettingFrame, width = 5, textvariable = vars["areas"])
+            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False)
             self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = cb["areasSliderChanged"](vars["areas"]))
 
             self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
@@ -641,9 +639,9 @@ class CSLapse():
 
         def _gridMainFrame(self) -> None:
             """Add main widgets to the grid"""
-            self.mainFrame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 5, pady = 5)
+            self.mainFrame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-            self.fileSelectionBox.grid(column = 0, row = 0, sticky = tkinter.EW)
+            self.fileSelectionBox.grid(column = 0, row = 0, sticky = tkinter.EW, padx = 2, pady = 5)
             self.exeSelectLabel.grid(column = 0, row = 0, columnspan = 3, sticky = tkinter.EW)
             self.exePath.grid(column = 0, row = 1, columnspan = 2, sticky = tkinter.EW)
             self.exeSelectBtn.grid(column = 2, row = 1)
@@ -653,7 +651,7 @@ class CSLapse():
             self.filesNumLabel.grid(column = 0, row = 4, sticky = tkinter.W)
             self.filesLoadedLabel.grid(column = 1, row = 4, sticky = tkinter.W)
 
-            self.videoSettingsBox.grid(column = 0, row = 1, sticky = tkinter.EW)
+            self.videoSettingsBox.grid(column = 0, row = 1, sticky = tkinter.EW, padx = 2, pady = 10)
             self.fpsLabel.grid(column = 0, row = 0, sticky = tkinter.W)
             self.fpsEntry.grid(column = 1, row = 0, sticky = tkinter.EW)
             self.imageWidthLabel.grid(column = 0, row = 1, sticky = tkinter.W)
@@ -663,7 +661,7 @@ class CSLapse():
             self.lengthInput.grid(column = 1, row = 2, sticky = tkinter.W)
             self.lengthUnit.grid(column = 2, row = 2, sticky = tkinter.W)
 
-            self.advancedSettingBox.grid(column = 0, row = 2, sticky = tkinter.EW)
+            self.advancedSettingBox.grid(column = 0, row = 2, sticky = tkinter.EW, padx = 2, pady = 5)
             self.threadsLabel.grid(column = 0, row = 0, sticky = tkinter.W)
             self.threadsEntry.grid(column = 1, row = 0, sticky = tkinter.EW)
             self.retryLabel.grid(column = 0, row = 1, sticky = tkinter.W)
@@ -687,7 +685,6 @@ class CSLapse():
 
         def _gridPreviewFrame(self) -> None:
             """Add widgets related to preview to the grid"""
-            self.middleBar.grid(column = 1, row = 0, sticky = tkinter.SW)
 
             self.previewFrame.grid(column = 20, row = 0, sticky = tkinter.NSEW)
 
@@ -753,6 +750,8 @@ class CSLapse():
             self.root.event_add('<<Abort>>', '<Control-C>')
             self.root.bind('<<Abort>>', lambda event: self.external.abortEvent.set())
             self.root.protocol("WM_DELETE_WINDOW", self.closePressed)
+            self.exePath.bind('<ButtonPress-1>', lambda event: self.selectExe())
+            self.samplePath.bind('<ButtonPress-1>', lambda event: self.selectSample())
 
         def _enable(self, * args: tkinter.Widget) -> None:
             """Set all argument widgets to enabled"""
@@ -1053,6 +1052,14 @@ class CSLapse():
             self.root = tkinter.Tk()
             self.root.title("CSLapse")
 
+        def selectExe(self) -> None:
+            """Call function to seelct CSLMapView.exe."""
+            self.external.openExe(constants["texts"]["openExeTitle"])
+
+        def selectSample(self) -> None:
+            """Call function to select a cslmap file."""
+            self.external.openSample(constants["texts"]["openSampleTitle"])
+
         def submitPressed(self) -> None:
             """Check if all conditions are satified and start exporting if yes. Show warning if not."""
             try:
@@ -1102,8 +1109,8 @@ class CSLapse():
             self._createStyles()
 
             self.callBacks = {
-                "openExe":self.external.openExe,
-                "openSample":self.external.openSample,
+                "openExe":self.selectExe,
+                "openSample":self.selectSample,
                 "fpsChanged":self.external.null,
                 "videoWidthChanged":self.external.null,
                 "threadsChanged":self.external.null,
