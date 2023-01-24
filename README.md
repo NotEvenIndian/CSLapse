@@ -6,7 +6,7 @@ The software is available as a precompiled binary for Windows10 x64. You can dow
 
 The executable has been successfully used on Windows 10 and Windows 11. 
 
-For other systems you might want to build it yourself. To see how you can do this, go to [Building from source](# Building from source).
+For other systems you might want to build it yourself. To see how you can do this, go to [Building from source](#building-from-source).
 
 # Usage:
 **Please note: creating a timelapse certainly puts a heavy load on your CPU, probably on your memory and possibly on your disk.**
