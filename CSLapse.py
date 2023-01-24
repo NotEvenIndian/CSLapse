@@ -1,3 +1,4 @@
+import sys
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from tkinter import messagebox
 
 from PIL import ImageTk, Image
 
+# Version 1.0.0 - release version
 # I know the code is extremely badly organized and the classes make almost no difference.
 #
 # This project was a huge learning experience for me as I have never worked with any of
@@ -112,6 +114,25 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
     raise ExportError(str('Could not export file.\nCommand: "'
         + ' '.join(cmd)
         + '"\nThis problem can arise normally, usually when resources are taken.'))
+
+
+def timeStamp() -> str:
+    """Return a timestamp in format hhmmss."""
+    return str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
+
+
+def resourcePath(relativePath: str) -> Path:
+    """
+    Get absolute path to resource, works for dev and for PyInstaller.
+
+    source: https://stackoverflow.com/a/13790741/19634396
+    """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = Path(__file__).parent.resolve()
+    return Path(base_path, relativePath)
 
 
 def roundToTwoDecimals(var: tkinter.StringVar) -> None:
@@ -354,11 +375,11 @@ class CSLapse():
             Cannot add image to video: non-fatal
         """
 
-        outFile = str(Path(self.sourceDir, f'{self.cityName.encode("ascii", "ignore").decode()}-{self.timestamp}.mp4'))
+        self.outFile = str(Path(self.sourceDir, f'{self.cityName.encode("ascii", "ignore").decode()}-{timeStamp()}.mp4'))
         while True:
             try:
                 out = cv2.VideoWriter(
-                    outFile,
+                    self.outFile,
                     cv2.VideoWriter_fourcc(*"mp4v"),
                     int(self.vars["fps"].get()),
                     (int(self.vars["width"].get()), int(self.vars["width"].get()))
@@ -447,6 +468,7 @@ class CSLapse():
         self.rawFiles = []
         self.imageFiles = []
         self.isRunning = False
+        self.outFile = ""
 
         self.vars["exeFile"].set(constants["noFileText"])
         self.vars["sampleFile"].set(constants["noFileText"])
@@ -481,6 +503,7 @@ class CSLapse():
         if self.exportingDoneEvent.is_set():
             self.exportingDoneEvent.clear()
             self.cleanupAfterSuccess()
+            self.gui.showInfo(f"See your timelapse at {self.outFile}", "Video completed")
             self.gui.setGUI("renderDone")
             self.isRunning = False
         if self.abortFinishedEvent.is_set():
@@ -489,9 +512,7 @@ class CSLapse():
         self.gui.root.after(100, self.checkThreadEvents)
 
     def __init__(self):
-
-        #timestamp to have a unique name
-        self.timestamp = str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
+        self.timestamp = timeStamp()
         self.gui = CSLapse.GUI(self)
         self.lock = threading.Lock()
 
@@ -538,6 +559,7 @@ class CSLapse():
         self.futures = []   # concurrent.futures.Future objects that are exporting images
         self.isRunning = False # If currently there is exporting going on
         self.isAborting = False # If an abort pre=ocess is in progress
+        self.outFile = "" # Name of output file
 
         self.filetypes = {
             "exe":[("Executables", "*.exe"), ("All files", "*")],
@@ -970,6 +992,10 @@ class CSLapse():
             """
             messagebox.showwarning(title, message)
 
+        def showInfo(self, message: str, title: str = "Info") -> None:
+            """Show info dialog box with given message and title."""
+            messagebox.showinfo(title, message)
+
         def askNonFatalError(self, message: str, title: str = "Error") -> bool:
             """
             Show error dialog box.
@@ -1051,6 +1077,8 @@ class CSLapse():
             self.external = parent
             self.root = tkinter.Tk()
             self.root.title("CSLapse")
+            iconfile = resourcePath("media/thumbnail.ico")
+            self.root.iconbitmap(default = iconfile)
 
         def selectExe(self) -> None:
             """Call function to seelct CSLMapView.exe."""
@@ -1285,6 +1313,6 @@ if __name__ == "__main__":
         },
         "clickable":"hand2",
         "previewCursor":"fleur",
-        "noPreviewImage":"media/NOIMAGE.png"#Path(currentDirectory, "media", "NOIMGAE.png")
+        "noPreviewImage": resourcePath("media/NOIMAGE.png")
     }
     main()
