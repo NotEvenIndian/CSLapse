@@ -1,8 +1,10 @@
 # CSLapse
 Create timelapses of your Cities:Skylines cities from regular CSLMapView saves.
 
+![](./docs/media/screenshotv1.0.0.png "Screenshot of the app")
+
 # Installation:
-The software is available as a precompiled binary for Windows10 x64. You can download it from [https://github.com/NotEvenIndian/CSLapse](https://github.com/NotEvenIndian/CSLapse). Go to releases and download the newest version.
+The software is available as a precompiled binary for Windows10 x64. Download the latest release from [https://github.com/NotEvenIndian/CSLapse/releases](https://github.com/NotEvenIndian/CSLapse/releases).
 
 The executable has been successfully used on Windows 10 and Windows 11. 
 
