@@ -639,7 +639,7 @@ class CSLapse():
             self.previewFrame = ttk.Frame(self.root)
 
             self.canvasFrame = ttk.Frame(self.previewFrame, relief = tkinter.SUNKEN, borderwidth = 2)
-            self.preview = CSLapse.GUI.Preview(self)
+            self.preview = Preview(self, self.previewFrame)
             self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text = "Refresh", cursor = constants["clickable"],
                 command = lambda:cb["refreshPreview"]())
             self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text = "Fit", cursor = constants["clickable"],
@@ -649,8 +649,8 @@ class CSLapse():
 
             self.canvasSettingFrame = ttk.Frame(self.previewFrame)
             self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False)
-            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = cb["areasSliderChanged"](vars["areas"]))
+            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, command = lambda: self.preview.areasChanged(vars["areas"]))
+            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.areasChanged(vars["areas"]))
 
             self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
             self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants["clickable"])
@@ -1157,127 +1157,196 @@ class CSLapse():
 
             self._configure()
 
-        class Preview(object):
-            """ Object that handles the preview functionaltiy in the GUI"""
+class Preview(object):
+    """ Object that handles the preview functionaltiy in the GUI"""
 
-            def __init__(self, parent: object):
-                self.gui = parent
-                self.canvas = tkinter.Canvas(self.gui.canvasFrame, cursor = "")
-                self.active = False
+    def __init__(self, parent: object, parentFrame: tkinter.Widget):
+        self.gui = parent
+        self.canvas = tkinter.Canvas(parentFrame, cursor = "")
+        self.active = False
 
-                self.fullWidth = self.canvas.winfo_screenwidth()    #Width of drawable canvas in pixels
-                self.fullHeight = self.canvas.winfo_screenheight()   #Height of drawable canvas in pixels
-                self.imageWidth = 0   #Width of original image in pixels
-                self.imageHeight = 0  #Height of original image in pixels
+        self.fullWidth = self.canvas.winfo_screenwidth()    #Width of drawable canvas in pixels
+        self.fullHeight = self.canvas.winfo_screenheight()   #Height of drawable canvas in pixels
+        self.imageWidth = 0   #Width of original image in pixels
+        self.imageHeight = 0  #Height of original image in pixels
 
-                self.printAreaX = 0   #X coordinate of the top left corner of the print area on the original image
-                self.printAreaY = 0   #Y coordinate of the top left corner of the printarea on the original image
-                self.printAreaW = 0   #Width of printarea on the original image
-                self.printAreaH = 0   #Height of printarea on the original image
-                self.previewAreas = 0 #Areas printed on the currently active preview image
+        self.printAreaX = 0   #X coordinate of the top left corner of the print area on the original image
+        self.printAreaY = 0   #Y coordinate of the top left corner of the printarea on the original image
+        self.printAreaW = 0   #Width of printarea on the original image
+        self.printAreaH = 0   #Height of printarea on the original image
+        self.previewAreas = 0 #Areas printed on the currently active preview image
 
-                self.imageX = 0  #X Coordinate on canvas of pixel in top left of image
-                self.imageY = 0  #Y Coordinate on canvas of pixel in top left of image
-                self.scaleFactor = 1  #Conversion factor: canvas pixels / original image pixels
+        self.imageX = 0  #X Coordinate on canvas of pixel in top left of image
+        self.imageY = 0  #Y Coordinate on canvas of pixel in top left of image
+        self.scaleFactor = 1  #Conversion factor: canvas pixels / original image pixels
 
-                self.placeholderImage = ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
-                self.canvas.create_image(0, 0, image = self.placeholderImage, tags = "placeholder")
+        self.placeholderImage = ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
+        self.canvas.create_image(0, 0, image = self.placeholderImage, tags = "placeholder")
 
-            def createBindings(self) -> None:
-                """Bind actions to events on the canvas."""
-                self.canvas.bind("<Configure>", self.resized)
-                self.canvas.bind("<MouseWheel>", self.scrolled)
-                self.canvas.bind("<B1-Motion>", self.dragged)
-                self.canvas.bind("<ButtonPress-1>", self.clicked)
+        self.printAreaNorth = self.canvas.create_rectangle(
+            (0, 0, self.fullWidth, self.printAreaY),
+            fill = "gray",
+            outline = "",
+            state = tkinter.NORMAL,
+            tags = ["activeArea"]
+        )
+        self.printAreaSouth = self.canvas.create_rectangle(
+            (0, self.printAreaY + self.printAreaH, self.fullWidth, self.fullHeight),
+            fill = "gray",
+            outline = "",
+            state = tkinter.NORMAL,
+            tags = ["activeArea"]
+        )
+        self.printAreaWest = self.canvas.create_rectangle(
+            (0, self.printAreaY, self.printAreaX, self.printAreaY + self.printAreaH),
+            fill = "gray",
+            outline = "",
+            state = tkinter.NORMAL,
+            tags = ["activeArea"]
+        )
+        self.printAreaEast = self.canvas.create_rectangle(
+            (self.printAreaX + self.printAreaW, self.printAreaY, self.fullWidth, self.printAreaY + self.printAreaH),
+            fill = "gray",
+            outline = "",
+            state = tkinter.NORMAL,
+            tags = ["activeArea"]
+        )
+        self.printAreaBorder = self.canvas.create_rectangle(
+            (self.printAreaX, self.printAreaY, self.printAreaX + self.printAreaW, self.printAreaY + self.printAreaH),
+            fill = "",
+            outline = "red",
+            state = tkinter.NORMAL,
+            tags = ["activeArea"],
+        )
 
-            def resizeImage(self, newFactor: float) -> None:
-                """Change the activeImage to one with the current scaleFactor, keep center pixel in center."""
-                self.imageX = self.fullWidth / 2-((self.fullWidth / 2-self.imageX) / self.scaleFactor) * newFactor
-                self.imageY = self.fullHeight / 2-((self.fullHeight / 2-self.imageY) / self.scaleFactor) * newFactor
+        self.canvas.itemconfigure("activeArea", state = tkinter.HIDDEN)
 
-                self.scaleFactor = newFactor
+    def createBindings(self) -> None:
+        """Bind actions to events on the canvas."""
+        self.canvas.bind("<Configure>", self.resized)
+        self.canvas.bind("<MouseWheel>", self.scrolled)
+        self.canvas.bind("<B1-Motion>", self.dragged)
+        self.canvas.bind("<ButtonPress-1>", self.clicked)
 
-                self.gui.external.vars["previewImage"] = ImageTk.PhotoImage(self.gui.external.vars["previewSource"].resize((int(self.imageWidth * self.scaleFactor), int(self.imageHeight * self.scaleFactor))))
-                self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
-                self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
+    def resizeImage(self, newFactor: float) -> None:
+        """Change the activeImage to one with the current scaleFactor, keep center pixel in center."""
+        self.imageX = self.fullWidth / 2-((self.fullWidth / 2-self.imageX) / self.scaleFactor) * newFactor
+        self.imageY = self.fullHeight / 2-((self.fullHeight / 2-self.imageY) / self.scaleFactor) * newFactor
 
-            def fitToCanvas(self) -> None:
-                """Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio."""
-                newScaleFactor = min(self.fullWidth / self.imageWidth, self.fullHeight / self.imageHeight)
-                self.resizeImage(newScaleFactor)
-                self.canvas.moveto(self.activeImage, x = (self.fullWidth-int(self.imageWidth * self.scaleFactor)) / 2, y = (self.fullHeight-int(self.imageHeight * self.scaleFactor)) / 2)
-                self.imageX = (self.fullWidth-self.imageWidth * self.scaleFactor) / 2
-                self.imageY = (self.fullHeight-self.imageHeight * self.scaleFactor) / 2
+        self.scaleFactor = newFactor
 
-            def scaleToOriginal(self) -> None:
-                """Rescale to the original size of the preview image."""
-                self.resizeImage(1)
+        self.gui.external.vars["previewImage"] = ImageTk.PhotoImage(self.gui.external.vars["previewSource"].resize((int(self.imageWidth * self.scaleFactor), int(self.imageHeight * self.scaleFactor))))
+        self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
+        self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
 
-            def justExported(self) -> None:
-                """Show newly exported preview image."""
-                self.imageWidth = self.gui.external.vars["width"].get()
-                self.imageHeight = self.gui.external.vars["width"].get()
+        self.updatePrintArea()
 
-                self.previewAreas = float(self.gui.external.vars["areas"].get())
-                self.printAreaX = 0
-                self.printAreaW = self.gui.external.vars["width"].get()
-                self.printAreaY = 0
-                self.printAreaH = self.gui.external.vars["width"].get()
-                
-                self.gui.external.vars["previewImage"] = ImageTk.PhotoImage(self.gui.external.vars["previewSource"])
-                if self.active:
-                    self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
-                else:
-                    self.activeImage = self.canvas.create_image(0, 0, anchor = tkinter.CENTER, image = self.gui.external.vars["previewImage"])
+    def fitToCanvas(self) -> None:
+        """Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio."""
+        newScaleFactor = min(self.fullWidth / self.imageWidth, self.fullHeight / self.imageHeight)
+        self.resizeImage(newScaleFactor)
+        self.canvas.moveto(self.activeImage, x = (self.fullWidth-int(self.imageWidth * self.scaleFactor)) / 2, y = (self.fullHeight-int(self.imageHeight * self.scaleFactor)) / 2)
+        self.imageX = (self.fullWidth-self.imageWidth * self.scaleFactor) / 2
+        self.imageY = (self.fullHeight-self.imageHeight * self.scaleFactor) / 2
 
-                self.fitToCanvas()
+        self.updatePrintArea()
 
-                self.active = True
-                self.canvas.itemconfigure("placeholder", state = "hidden")
+    def scaleToOriginal(self) -> None:
+        """Rescale to the original size of the preview image."""
+        self.resizeImage(1)
 
-            def resized(self, event: tkinter.Event) -> None:
-                """Handle change in the canvas's size."""
-                if self.active:
-                    #Center of the canvas should stay the center of the canvas when the window is resized
-                    self.imageX = ((self.imageX+self.imageWidth * self.scaleFactor / 2) * event.width / self.fullWidth)-(self.imageWidth * self.scaleFactor / 2)
-                    self.imageY = ((self.imageY+self.imageHeight * self.scaleFactor / 2) * event.height / self.fullHeight)-(self.imageHeight * self.scaleFactor / 2)
-                    self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
+    def justExported(self) -> None:
+        """Show newly exported preview image."""
+        self.imageWidth = self.gui.external.vars["width"].get()
+        self.imageHeight = self.gui.external.vars["width"].get()
 
-                if not self.active:
-                    self.canvas.moveto("placeholder", x = str((event.width-self.placeholderImage.width()) / 2),
-                                                    y = str((event.height-self.placeholderImage.height()) / 2))
-                self.fullWidth = event.width
-                self.fullHeight = event.height
+        self.previewAreas = float(self.gui.external.vars["areas"].get())
+        self.printAreaX = 0
+        self.printAreaW = self.gui.external.vars["width"].get()
+        self.printAreaY = 0
+        self.printAreaH = self.gui.external.vars["width"].get()
+        
+        self.gui.external.vars["previewImage"] = ImageTk.PhotoImage(self.gui.external.vars["previewSource"])
+        if self.active:
+            self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
+        else:
+            self.activeImage = self.canvas.create_image(0, 0, anchor = tkinter.CENTER, image = self.gui.external.vars["previewImage"], tags = "activeImage")
 
-            def scrolled(self, event: tkinter.Event) -> None:
-                """Handle scrolling event (zoom) on canvas."""
-                if self.active:
-                    self.resizeImage(self.scaleFactor * (1+6 /(event.delta)))
+        self.fitToCanvas()
 
-            def dragged(self, event: tkinter.Event) -> None:
-                """Handle dragging event (panning) on canvas."""
-                if self.active:
-                    deltaX = event.x-self.lastClick[0]
-                    deltaY = event.y-self.lastClick[1]
-                    self.canvas.moveto(self.activeImage, x = self.imageX + deltaX, y = self.imageY + deltaY)
-                    self.imageX = self.imageX + deltaX
-                    self.imageY = self.imageY + deltaY
-                    self.lastClick = (event.x, event.y)
+        self.active = True
+        self.canvas.itemconfigure("placeholder", state = "hidden")
 
-            def clicked(self, event: tkinter.Event) -> None:
-                """Handle buttonpress event on canvas."""
-                if self.active:
-                    self.lastClick = (event.x, event.y)
+        self.updatePrintArea()
+        self.canvas.itemconfigure("activeArea", state = tkinter.NORMAL)
+        self.canvas.tag_raise("activeArea", "activeImage")
 
-            def areasChanged(self) -> None:
-                """Currently out of use: Reflect change in export areas on preview."""
-                wRatio = self.imageWidth / self.previewAreas
-                self.printAreaX = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * wRatio
-                self.printAreaW = wRatio * float(self.gui.external.vars["areas"].get())
-                hRatio = self.imageHeight / self.previewAreas
-                self.printAreaY = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * hRatio
-                self.printAreaH = hRatio * float(self.gui.external.vars["areas"].get())
+    def resized(self, event: tkinter.Event) -> None:
+        """Handle change in the canvas's size."""
+        if self.active:
+            #Center of the canvas should stay the center of the canvas when the window is resized
+            self.imageX = ((self.imageX+self.imageWidth * self.scaleFactor / 2) * event.width / self.fullWidth)-(self.imageWidth * self.scaleFactor / 2)
+            self.imageY = ((self.imageY+self.imageHeight * self.scaleFactor / 2) * event.height / self.fullHeight)-(self.imageHeight * self.scaleFactor / 2)
+            self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
 
+        if not self.active:
+            self.canvas.moveto("placeholder", x = str((event.width-self.placeholderImage.width()) / 2),
+                                            y = str((event.height-self.placeholderImage.height()) / 2))
+        self.fullWidth = event.width
+        self.fullHeight = event.height
+
+        self.movePrintArea()
+
+    def scrolled(self, event: tkinter.Event) -> None:
+        """Handle scrolling event (zoom) on canvas."""
+        if self.active:
+            self.resizeImage(self.scaleFactor * (1+6 /(event.delta)))
+
+    def dragged(self, event: tkinter.Event) -> None:
+        """Handle dragging event (panning) on canvas."""
+        if self.active:
+            deltaX = event.x-self.lastClick[0]
+            deltaY = event.y-self.lastClick[1]
+            self.canvas.moveto(self.activeImage, x = self.imageX + deltaX, y = self.imageY + deltaY)
+            self.imageX = self.imageX + deltaX
+            self.imageY = self.imageY + deltaY
+            self.lastClick = (event.x, event.y)
+
+            self.movePrintArea()
+
+    def clicked(self, event: tkinter.Event) -> None:
+        """Handle buttonpress event on canvas."""
+        if self.active:
+            self.lastClick = (event.x, event.y)
+
+    def areasChanged(self, var: tkinter.StringVar) -> None:
+        """Currently out of use: Reflect change in export areas on preview."""
+        if self.active:
+            roundToTwoDecimals(var)
+            self.updatePrintArea()
+
+    def updatePrintArea(self) -> None:
+        wRatio = self.imageWidth / self.previewAreas
+        self.printAreaX = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * wRatio
+        self.printAreaW = wRatio * float(self.gui.external.vars["areas"].get())
+        hRatio = self.imageHeight / self.previewAreas
+        self.printAreaY = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * hRatio
+        self.printAreaH = hRatio * float(self.gui.external.vars["areas"].get())
+
+        self.movePrintArea()
+
+    def movePrintArea(self) -> None:
+        canvasTop = self.imageY + self.scaleFactor * self.printAreaY
+        canvasBottom = self.imageY + self.scaleFactor * (self.printAreaY + self.printAreaH)
+        canvasLeft = self.imageX + self.scaleFactor * self.printAreaX
+        canvasRight = self.imageX + self.scaleFactor * (self.printAreaX + self.printAreaW)
+
+        self.canvas.coords(self.printAreaNorth, 0, 0, self.fullWidth, canvasTop)
+        self.canvas.coords(self.printAreaSouth, 0, canvasBottom, self.fullWidth, self.fullHeight)
+        self.canvas.coords(self.printAreaWest, 0, canvasTop, canvasLeft, canvasBottom)
+        self.canvas.coords(self.printAreaEast, canvasRight, canvasTop, self.fullWidth, canvasBottom)
+        self.canvas.coords(self.printAreaBorder, canvasLeft, canvasTop, canvasRight, canvasBottom)
+        
 
 def main() -> None:
     with CSLapse() as O:
