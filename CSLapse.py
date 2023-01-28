@@ -649,8 +649,8 @@ class CSLapse():
 
             self.canvasSettingFrame = ttk.Frame(self.previewFrame)
             self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, command = lambda: self.preview.areasChanged(vars["areas"]))
-            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.areasChanged(vars["areas"]))
+            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (cb["areasChanged"], "%d", "%P"), validate = "all", command = lambda: self.preview.areasChanged(float(vars["areas"].get())))
+            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.areasChanged(float(vars["areas"].get())))
 
             self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
             self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants["clickable"])
@@ -724,6 +724,33 @@ class CSLapse():
             #Functionality not implemented yet
             #self.rotationLabel.grid(column = 0, row = 1, columnspan = 3, sticky = tkinter.W)
             #self.rotationSelection.grid(column = 1, row = 1, columnspan = 2, sticky = tkinter.W)
+
+        def registerCallbacks(self) -> None:
+            
+            self.callBacks = {
+                "openExe":self.selectExe,
+                "openSample":self.selectSample,
+                "fpsChanged":self.external.null,
+                "videoWidthChanged":self.external.null,
+                "threadsChanged":self.external.null,
+                "areasChanged": self.root.register(self.validateAreas),
+                "areasSliderChanged":roundToTwoDecimals,
+                "submit": self.submitPressed,
+                "abort":self.abortPressed,
+                "refreshPreview":self.refreshPressed
+            }
+
+        def validateAreas(self, action, newText) -> bool:
+            if action == "0":
+                return True
+            try:
+                number = float(newText)
+                if number >= 0.1 and number <= 9.0:
+                    self.preview.areasChanged(number)
+                    return True
+                return False
+            except Exception:
+                return False
 
         def _applyToTree(self, root: tkinter.Widget, callback: Callable[[tkinter.Widget],None]) -> None:
             """Call callback for every widget in the tree whose origin is root."""
@@ -1136,24 +1163,14 @@ class CSLapse():
 
             self._createStyles()
 
-            self.callBacks = {
-                "openExe":self.selectExe,
-                "openSample":self.selectSample,
-                "fpsChanged":self.external.null,
-                "videoWidthChanged":self.external.null,
-                "threadsChanged":self.external.null,
-                "areasEntered":roundToTwoDecimals,
-                "areasSliderChanged":roundToTwoDecimals,
-                "submit": self.submitPressed,
-                "abort":self.abortPressed,
-                "refreshPreview":self.refreshPressed
-            }
+            self.registerCallbacks()
 
             self._createMainFrame(self.callBacks, self.external.vars, self.external.filetypes, constants["texts"])
             self._createPreviewFrame(self.callBacks, self.external.vars)
 
             self._gridMainFrame()
             self._gridPreviewFrame()
+
 
             self._configure()
 
@@ -1239,7 +1256,7 @@ class Preview(object):
         self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
         self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
 
-        self.updatePrintArea()
+        self.updatePrintArea(float(self.gui.external.vars["areas"].get()))
 
     def fitToCanvas(self) -> None:
         """Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio."""
@@ -1249,7 +1266,7 @@ class Preview(object):
         self.imageX = (self.fullWidth-self.imageWidth * self.scaleFactor) / 2
         self.imageY = (self.fullHeight-self.imageHeight * self.scaleFactor) / 2
 
-        self.updatePrintArea()
+        self.updatePrintArea(float(self.gui.external.vars["areas"].get()))
 
     def scaleToOriginal(self) -> None:
         """Rescale to the original size of the preview image."""
@@ -1277,7 +1294,7 @@ class Preview(object):
         self.active = True
         self.canvas.itemconfigure("placeholder", state = "hidden")
 
-        self.updatePrintArea()
+        self.updatePrintArea(self.previewAreas)
         self.canvas.itemconfigure("activeArea", state = tkinter.NORMAL)
         self.canvas.tag_raise("activeArea", "activeImage")
 
@@ -1319,23 +1336,24 @@ class Preview(object):
         if self.active:
             self.lastClick = (event.x, event.y)
 
-    def areasChanged(self, var: tkinter.StringVar) -> None:
+    def areasChanged(self, value: float) -> None:
         """Currently out of use: Reflect change in export areas on preview."""
         if self.active:
-            roundToTwoDecimals(var)
-            self.updatePrintArea()
+            self.updatePrintArea(value)
 
-    def updatePrintArea(self) -> None:
+    def updatePrintArea(self, value: float) -> None:
+        """Cahnge the printarea rectangle to the new size given by value."""
         wRatio = self.imageWidth / self.previewAreas
-        self.printAreaX = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * wRatio
-        self.printAreaW = wRatio * float(self.gui.external.vars["areas"].get())
+        self.printAreaX = (self.previewAreas-value) / 2 * wRatio
+        self.printAreaW = wRatio * value
         hRatio = self.imageHeight / self.previewAreas
-        self.printAreaY = (self.previewAreas-float(self.gui.external.vars["areas"].get())) / 2 * hRatio
-        self.printAreaH = hRatio * float(self.gui.external.vars["areas"].get())
+        self.printAreaY = (self.previewAreas-value) / 2 * hRatio
+        self.printAreaH = hRatio * value
 
         self.movePrintArea()
 
     def movePrintArea(self) -> None:
+        """Move the printarea rectangle to the location of the preview image."""
         canvasTop = self.imageY + self.scaleFactor * self.printAreaY
         canvasBottom = self.imageY + self.scaleFactor * (self.printAreaY + self.printAreaH)
         canvasLeft = self.imageX + self.scaleFactor * self.printAreaX
