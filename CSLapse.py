@@ -649,8 +649,8 @@ class CSLapse():
 
             self.canvasSettingFrame = ttk.Frame(self.previewFrame)
             self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (cb["areasChanged"], "%d", "%P"), validate = "all", command = lambda: self.preview.areasChanged(float(vars["areas"].get())))
-            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.areasChanged(float(vars["areas"].get())))
+            self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (cb["areasChanged"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
+            self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.update_printarea(float(vars["areas"].get())))
 
             self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
             self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants["clickable"])
@@ -746,7 +746,7 @@ class CSLapse():
             try:
                 number = float(newText)
                 if number >= 0.1 and number <= 9.0:
-                    self.preview.areasChanged(number)
+                    self.preview.update_printarea(number)
                     return True
                 return False
             except Exception:
@@ -1177,6 +1177,88 @@ class CSLapse():
 class Preview(object):
     """ Object that handles the preview functionaltiy in the GUI"""
 
+    class Printarea(object):
+        """Class for the outline of the area that will be exported."""
+
+        def __init__(self, canvas: tkinter.Canvas):
+            self.x_start = 0 #X coordinate of the top left corner of the print area on the original image
+            self.y_start = 0 #Y coordinate of the top left corner of the printarea on the original image
+            self.width = 0   #Width of printarea on the original image
+            self.height = 0  #Height of printarea on the original image
+
+            self.canvas = canvas
+
+            self.north = self.canvas.create_rectangle(
+                (0, 0, 0, 0),
+                fill = "gray",
+                outline = "",
+                state = tkinter.NORMAL,
+                tags = ["printarea"]
+            )
+            self.south = self.canvas.create_rectangle(
+                (0, 0, 0, 0),
+                fill = "gray",
+                outline = "",
+                state = tkinter.NORMAL,
+                tags = ["printarea"]
+            )
+            self.west = self.canvas.create_rectangle(
+                (0, 0, 0, 0),
+                fill = "gray",
+                outline = "",
+                state = tkinter.NORMAL,
+                tags = ["printarea"]
+            )
+            self.east = self.canvas.create_rectangle(
+                (0, 0, 0, 0),
+                fill = "gray",
+                outline = "",
+                state = tkinter.NORMAL,
+                tags = ["printarea"]
+            )
+            self.border = self.canvas.create_rectangle(
+                (0, 0, 0, 0),
+                fill = "",
+                outline = "red",
+                state = tkinter.NORMAL,
+                tags = ["printarea"],
+            )
+
+        def show(self) -> None:
+            """Show the outline on canvas."""
+            self.canvas.itemconfigure("printarea", state = tkinter.NORMAL)
+
+        def hide(self) -> None:
+            """Hide the outline on canvas."""
+            self.canvas.itemconfigure("printarea", state = tkinter.HIDDEN)
+
+        def raise_above(self, tagorid: str) -> None:
+            """Raise the ourline above the object(s) given by tagorid on canvas."""
+            self.canvas.tag_raise("printarea", tagorid)
+
+        def resize(self, exported_w: int, exported_h: int, exported_areas: float, new_areas: float) -> None:
+            """Resize the outline when the areas to be show chage."""
+            wRatio = exported_w / exported_areas
+            self.x_start = (exported_areas - new_areas) / 2 * wRatio
+            self.width = wRatio * new_areas
+
+            hRatio = exported_h / exported_areas
+            self.y_start = (exported_areas - new_areas) / 2 * hRatio
+            self.height = hRatio * new_areas
+
+        def move(self, canvas_w: int, canvas_h: int, image_x: int, image_y: int, scale_factor: float) -> None:
+            """Move the printarea rectangle to the location of the preview image."""
+            canvasTop = image_y + scale_factor * self.y_start
+            canvasBottom = image_y + scale_factor * (self.y_start + self.height)
+            canvasLeft = image_x + scale_factor * self.x_start
+            canvasRight = image_x + scale_factor * (self.x_start + self.width)
+
+            self.canvas.coords(self.north, 0, 0, canvas_w, canvasTop)
+            self.canvas.coords(self.south, 0, canvasBottom, canvas_w, canvas_h)
+            self.canvas.coords(self.west, 0, canvasTop, canvasLeft, canvasBottom)
+            self.canvas.coords(self.east, canvasRight, canvasTop, canvas_w, canvasBottom)
+            self.canvas.coords(self.border, canvasLeft, canvasTop, canvasRight, canvasBottom)
+
     def __init__(self, parent: object, parentFrame: tkinter.Widget):
         self.gui = parent
         self.canvas = tkinter.Canvas(parentFrame, cursor = "")
@@ -1187,12 +1269,7 @@ class Preview(object):
         self.imageWidth = 0   #Width of original image in pixels
         self.imageHeight = 0  #Height of original image in pixels
 
-        self.printAreaX = 0   #X coordinate of the top left corner of the print area on the original image
-        self.printAreaY = 0   #Y coordinate of the top left corner of the printarea on the original image
-        self.printAreaW = 0   #Width of printarea on the original image
-        self.printAreaH = 0   #Height of printarea on the original image
         self.previewAreas = 0 #Areas printed on the currently active preview image
-
         self.imageX = 0  #X Coordinate on canvas of pixel in top left of image
         self.imageY = 0  #Y Coordinate on canvas of pixel in top left of image
         self.scaleFactor = 1  #Conversion factor: canvas pixels / original image pixels
@@ -1200,43 +1277,8 @@ class Preview(object):
         self.placeholderImage = ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
         self.canvas.create_image(0, 0, image = self.placeholderImage, tags = "placeholder")
 
-        self.printAreaNorth = self.canvas.create_rectangle(
-            (0, 0, self.fullWidth, self.printAreaY),
-            fill = "gray",
-            outline = "",
-            state = tkinter.NORMAL,
-            tags = ["activeArea"]
-        )
-        self.printAreaSouth = self.canvas.create_rectangle(
-            (0, self.printAreaY + self.printAreaH, self.fullWidth, self.fullHeight),
-            fill = "gray",
-            outline = "",
-            state = tkinter.NORMAL,
-            tags = ["activeArea"]
-        )
-        self.printAreaWest = self.canvas.create_rectangle(
-            (0, self.printAreaY, self.printAreaX, self.printAreaY + self.printAreaH),
-            fill = "gray",
-            outline = "",
-            state = tkinter.NORMAL,
-            tags = ["activeArea"]
-        )
-        self.printAreaEast = self.canvas.create_rectangle(
-            (self.printAreaX + self.printAreaW, self.printAreaY, self.fullWidth, self.printAreaY + self.printAreaH),
-            fill = "gray",
-            outline = "",
-            state = tkinter.NORMAL,
-            tags = ["activeArea"]
-        )
-        self.printAreaBorder = self.canvas.create_rectangle(
-            (self.printAreaX, self.printAreaY, self.printAreaX + self.printAreaW, self.printAreaY + self.printAreaH),
-            fill = "",
-            outline = "red",
-            state = tkinter.NORMAL,
-            tags = ["activeArea"],
-        )
-
-        self.canvas.itemconfigure("activeArea", state = tkinter.HIDDEN)
+        self.printarea = Preview.Printarea(self.canvas)
+        self.printarea.hide()
 
     def createBindings(self) -> None:
         """Bind actions to events on the canvas."""
@@ -1256,7 +1298,7 @@ class Preview(object):
         self.canvas.itemconfigure(self.activeImage, image = self.gui.external.vars["previewImage"])
         self.canvas.moveto(self.activeImage, x = self.imageX, y = self.imageY)
 
-        self.updatePrintArea(float(self.gui.external.vars["areas"].get()))
+        self.update_printarea()
 
     def fitToCanvas(self) -> None:
         """Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio."""
@@ -1266,7 +1308,7 @@ class Preview(object):
         self.imageX = (self.fullWidth-self.imageWidth * self.scaleFactor) / 2
         self.imageY = (self.fullHeight-self.imageHeight * self.scaleFactor) / 2
 
-        self.updatePrintArea(float(self.gui.external.vars["areas"].get()))
+        self.update_printarea()
 
     def scaleToOriginal(self) -> None:
         """Rescale to the original size of the preview image."""
@@ -1294,9 +1336,9 @@ class Preview(object):
         self.active = True
         self.canvas.itemconfigure("placeholder", state = "hidden")
 
-        self.updatePrintArea(self.previewAreas)
-        self.canvas.itemconfigure("activeArea", state = tkinter.NORMAL)
-        self.canvas.tag_raise("activeArea", "activeImage")
+        self.update_printarea(self.previewAreas)
+        self.printarea.raise_above("activeImage")
+        self.printarea.show()
 
     def resized(self, event: tkinter.Event) -> None:
         """Handle change in the canvas's size."""
@@ -1312,7 +1354,7 @@ class Preview(object):
         self.fullWidth = event.width
         self.fullHeight = event.height
 
-        self.movePrintArea()
+        self.update_printarea()
 
     def scrolled(self, event: tkinter.Event) -> None:
         """Handle scrolling event (zoom) on canvas."""
@@ -1329,41 +1371,19 @@ class Preview(object):
             self.imageY = self.imageY + deltaY
             self.lastClick = (event.x, event.y)
 
-            self.movePrintArea()
+            self.update_printarea()
 
     def clicked(self, event: tkinter.Event) -> None:
         """Handle buttonpress event on canvas."""
         if self.active:
             self.lastClick = (event.x, event.y)
 
-    def areasChanged(self, value: float) -> None:
-        """Currently out of use: Reflect change in export areas on preview."""
+    def update_printarea(self, new_areas: float = None) -> None:
+        """Reflect change on preview canvas areas on printarea."""
         if self.active:
-            self.updatePrintArea(value)
-
-    def updatePrintArea(self, value: float) -> None:
-        """Cahnge the printarea rectangle to the new size given by value."""
-        wRatio = self.imageWidth / self.previewAreas
-        self.printAreaX = (self.previewAreas-value) / 2 * wRatio
-        self.printAreaW = wRatio * value
-        hRatio = self.imageHeight / self.previewAreas
-        self.printAreaY = (self.previewAreas-value) / 2 * hRatio
-        self.printAreaH = hRatio * value
-
-        self.movePrintArea()
-
-    def movePrintArea(self) -> None:
-        """Move the printarea rectangle to the location of the preview image."""
-        canvasTop = self.imageY + self.scaleFactor * self.printAreaY
-        canvasBottom = self.imageY + self.scaleFactor * (self.printAreaY + self.printAreaH)
-        canvasLeft = self.imageX + self.scaleFactor * self.printAreaX
-        canvasRight = self.imageX + self.scaleFactor * (self.printAreaX + self.printAreaW)
-
-        self.canvas.coords(self.printAreaNorth, 0, 0, self.fullWidth, canvasTop)
-        self.canvas.coords(self.printAreaSouth, 0, canvasBottom, self.fullWidth, self.fullHeight)
-        self.canvas.coords(self.printAreaWest, 0, canvasTop, canvasLeft, canvasBottom)
-        self.canvas.coords(self.printAreaEast, canvasRight, canvasTop, self.fullWidth, canvasBottom)
-        self.canvas.coords(self.printAreaBorder, canvasLeft, canvasTop, canvasRight, canvasBottom)
+            if new_areas is not None:
+                self.printarea.resize(self.imageWidth, self.imageHeight, self.previewAreas, new_areas)
+            self.printarea.move(self.fullWidth, self.fullHeight, self.imageX, self.imageY, self.scaleFactor)
         
 
 def main() -> None:
