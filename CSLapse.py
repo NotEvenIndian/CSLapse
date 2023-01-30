@@ -43,11 +43,15 @@ def get_logger_config_dict() -> dict:
                 "level": logging.INFO,
                 "formatter": "default",
                 "filename": "./cslapse.log",
-                "maxBytes": 1024,
+                "maxBytes": 200000,
                 "backupCount": 1
             }
         },
         "loggers":{
+            "root": {
+                "level": logging.INFO,
+                "handlers": ["logfile"]
+            },
             "cslapse": {
                 "level": logging.INFO,
                 "handlers": ["logfile"]
@@ -80,6 +84,7 @@ class ThreadCollector(threading.Thread):
         ):
         threading.Thread.__init__(self)
         
+        self.log = logging.getLogger("root")
         self._counter = counter
         if self._counter is not None:
             self._counter.set(0)
@@ -95,17 +100,21 @@ class ThreadCollector(threading.Thread):
             threading.enumerate()
         ))
 
+        self.log.info("Threadcollector object initiated.")
+
     def total(self) -> int:
         """Returns total number of threads and futures to cancel."""
         return len(self._garbage_threads)
 
     def run(self) -> None:
+        self.log.info("Threadcollector started.")
         for t in self._garbage_threads:
             t.join()
             if self._counter is not None:
                 self._counter.set(self._counter.get() + 1)
         if self._callback is not None:
             self._callback()
+        self.log.info("Threadcollector finished.")
         return
 
 
@@ -117,13 +126,17 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
         Cannot export file after [retry] tries: raises ExportError
     """
 
+    log = logging.getLogger("root")
+
     #Prepare command that calls cslmapview.exe
     newFileName = Path(outFolder, srcFile.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
     cmd[1] = str(srcFile)
     cmd[3] = str(newFileName)
 
+    log.info(f"Export started with command '{' '.join(cmd)}'")
+
     #call CSLMapview.exe to export the image. Try again at fail, abort after manz tries.
-    for _ in range(retry):
+    for n in range(retry):
         try:
             #Call the program in a separate process
             subprocess.run(cmd, shell = False, stderr = subprocess.DEVNULL, stdout = subprocess.DEVNULL, check = False)
@@ -137,6 +150,7 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
             #Ensure that the image file was successfully created. 
             assert newFileName.exists()
             
+            log.info(f"Export of file '{newFileName}' finshed successfully after {n+1} attempts.")
             return str(newFileName)
         except AbortException as error:
             raise AbortException from error
@@ -198,13 +212,16 @@ class CSLapse():
                     if self.tempFolder.exists():
                         rmtree(self.tempFolder, ignore_errors = False)
                     self.tempFolder.mkdir()
+                self.log.info("Tempfolder cleared or created successfully.")
                 return
             except Exception as e:
                 self.gui.askFatalError(str(e))
 
     def openFile(self, title: str, filetypes: List[Tuple], defDir: str = None) -> str:
         """Open file opening dialog box and return the full path to the selected file."""
-        return filedialog.askopenfilename(title = title, initialdir = defDir, filetypes = filetypes)
+        filename = filedialog.askopenfilename(title = title, initialdir = defDir, filetypes = filetypes)
+        self.log.info(f"File '{filename}' selected.")
+        return filename
         
     def setSampleFile(self, sampleFile: str) -> None:
         """Store city name and location of the sample file."""
@@ -275,6 +292,7 @@ class CSLapse():
         self.collections["sampleCommand"][6] = str(self.vars["width"].get())
         self.collections["sampleCommand"][8] = str(self.vars["areas"].get())
 
+        self.log.info("Refreshing preview started.")
         exporter = threading.Thread(
             target = self.exportSample,
             args = (
@@ -354,6 +372,7 @@ class CSLapse():
         self.imageFiles = []
         self.futures = []
         self.gui.setGUI("startExport")
+        self.log.info("Exporting process started.")
 
     def run(self) -> None:
         """Export images and create video from them.
@@ -363,10 +382,14 @@ class CSLapse():
             AbortException: return
         """
         try:
+            self.log.info("Exporting image files started.")
             self.exportImageFiles()
+            self.log.info("Exporting image files finished.")
             self.imageFilesExportedEvent.set()
             self.gui.setGUI("startRender")
+            self.log.info("Rendering video started.")
             self.renderVideo()
+            self.log.info("Rendering video finished.")
             self.exportingDoneEvent.set()
         except AbortException as e:
             self.abortEvent.set()
@@ -446,13 +469,16 @@ class CSLapse():
                     #For some reason it still cannot catch cv2 errors
                     if not self.gui.askNonFatalError(str(e)):
                         i += 1
+                        self.log.warning(f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
                 except Exception as e:
                     if not self.gui.askNonFatalError(str(e)):
                         i += 1
+                        self.log.warning(f"Skipping image '{self.imageFiles[i]}' after unknow Exception.")
         except AbortException as e:
             raise AbortException from e
         finally:
             out.release()
+            self.log.info(f"Released video file '{self.outFile}'")
 
     def abort(self, event: tkinter.Event = None) -> None:
         """Stop currently running export process.
@@ -474,6 +500,8 @@ class CSLapse():
             self.isRunning = False
             self.gui.setGUI("aborting")
 
+            self.log.info("Abort procedure started on main thread.")
+
             self.vars["threadCollecting"].set(0)
             collector = ThreadCollector([threading.current_thread()], self.futures, counter = self.vars["threadCollecting"], callback=self.abortFinishedEvent.set)
             self.gui.progressPopup(self.vars["threadCollecting"], collector.total())
@@ -485,6 +513,7 @@ class CSLapse():
         self.imageFiles = []
         self.futures = []
         self.isRunning = False
+        self.log.info("Successful cleanup after successful export.")
 
     def cleanupAfterAbort(self) -> None:
         """Clean up variables and environment after aborted exporting."""
@@ -494,8 +523,10 @@ class CSLapse():
         self.gui.setGUI("afterAbort")
         self.abortEvent.clear()
         self.isAborting = False
+        self.log.info("Successful cleanup after aborted export.")
         if self.exitEvent.is_set():
             self.gui.root.destroy()
+            self.log.info("Exiting after aborted export.")
 
     def _resetState(self) -> None:
         """Set all variables to the default state."""
@@ -550,8 +581,9 @@ class CSLapse():
 
     def __init__(self):
         self.timestamp = timeStamp()
-        self.gui = CSLapse.GUI(self)
         self.lock = threading.Lock()
+        self.log = logging.getLogger("cslapse")
+        self.gui = CSLapse.GUI(self)
 
         self.abortEvent = threading.Event()
         self.abortEvent.clear()
@@ -612,15 +644,18 @@ class CSLapse():
         self.gui.setGUI("defaultState")
         self.gui.root.after(0, self.checkThreadEvents)
 
+        self.log.info("CSLapse object initiated.")
+
     def __enter__(self) -> object:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        """Clean up tempFolder"""
+        """Clean up after the object"""
         if self.tempFolder is not None and self.tempFolder.exists():
             rmtree(self.tempFolder, ignore_errors = True)
         collector = ThreadCollector([threading.current_thread()], counter = self.vars["threadCollecting"])
         collector.start()
+        self.log.info("Cleanup after object done")
     
     class GUI(object):
         """Object that contains the GUI elements and methods of the program."""
@@ -1011,6 +1046,7 @@ class CSLapse():
                     self.imageWidthInput, 
                     self.lengthInput, 
                     self.threadsEntry, 
+                    self.retryEntry,
                     self.zoomSlider, 
                     self.zoomEntry, 
                     self.abortBtn, 
@@ -1030,6 +1066,7 @@ class CSLapse():
                     self.imageWidthInput, 
                     self.lengthInput, 
                     self.threadsEntry, 
+                    self.retryEntry,
                     self.zoomSlider, 
                     self.zoomEntry, 
                     self.abortBtn, 
@@ -1044,6 +1081,8 @@ class CSLapse():
                 self._show(self.submitBtn)
                 self.root.configure(cursor = "")
                 self.preview.canvas.configure(cursor = constants["previewCursor"])
+            
+            self.log.info(f"GUI set to {state}")
 
         def showWarning(self, message: str, title: str = "Warning") -> None:
             """
@@ -1054,10 +1093,12 @@ class CSLapse():
 
             For more serious issues use errors.
             """
+            self.log.info(f"Warning shown: {title} | {message}")
             messagebox.showwarning(title, message)
 
         def showInfo(self, message: str, title: str = "Info") -> None:
             """Show info dialog box with given message and title."""
+            self.log.info(f"Info shown: {title} | {message}")
             messagebox.showinfo(title, message)
 
         def askNonFatalError(self, message: str, title: str = "Error") -> bool:
@@ -1073,6 +1114,7 @@ class CSLapse():
 
             Non-fatal errors can be dismissed.
             """
+            self.log.info(f"Non-fatal error shown: {title} | {message}")
             return messagebox.askretrycancel(title, message)
 
         def askAbortingError(self, message: str, title: str = "Fatal error") -> None:
@@ -1089,7 +1131,9 @@ class CSLapse():
             The user can decide to retry and continue exporting or abort it.
             """
             message += "\n\nRetry or exporting will be aborted."
+            self.log.info(f"Aborting error shown: {title} | {message}")
             if not messagebox.askretrycancel(title, message):
+                self.log.info(f"Abort initiated from aborting error: {title} | {message}")
                 self.root.event_generate('<<Abort>>', when = "tail")
 
         def askFatalError(self, message: str, title: str = "Fatal error") -> bool:
@@ -1106,6 +1150,7 @@ class CSLapse():
             or Cancel and exit prematurely.
             """
             message += "\n\nRetry or the program will exit automatically."
+            self.log.info(f"Fatal error shown: {title} | {message}")
             return messagebox.askretrycancel(title, message)
 
         def progressPopup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
@@ -1134,15 +1179,18 @@ class CSLapse():
             win.geometry(f"{w}x{h}+{x}+{y}")
 
             self.popups.append(win)
+            self.log.info(f"Progress popup created: {var.get()}/{maximum}")
             return win
 
         def __init__(self, parent: object):
+            self.log = logging.getLogger("gui")
             self.popups = []
             self.external = parent
             self.root = tkinter.Tk()
             self.root.title("CSLapse")
             iconfile = resourcePath("media/thumbnail.ico")
             self.root.iconbitmap(default = iconfile)
+            self.log.info("GUI initiated successfully.")
 
         def selectExe(self) -> None:
             """Call function to seelct CSLMapView.exe."""
@@ -1172,15 +1220,25 @@ class CSLapse():
                 else:
                     self.external.export()
             except Exception:
+                self.log.warning(f'Submit button pressed with faulty entry data: \
+                    exefile={self.external.vars["exeFile"].get()}, \
+                    samplefile={self.external.vars["sampleFile"].get()}, \
+                    fps={self.external.vars["fps"].get()}, \
+                    width={self.external.vars["width"].get()},\
+                    videolenght={self.external.vars["videoLength"].get()}, \
+                    threads={self.external.vars["threads"].get()}, \
+                    retry={self.external.vars["retry"].get()}')
                 self.showWarning("Something went wrong. Check your settings and try again.")
 
         def abortPressed(self) -> None:
             """Ask user if really wants to abort. Generate abort tinter event if yes."""
             if messagebox.askyesno(title = "Abort action?", message = constants["texts"]["askAbort"]):
+                self.log.info("Abort initiated by abort button.")
                 self.root.event_generate('<<Abort>>', when = "tail")
 
         def refreshPressed(self) -> None:
             """Call function to refresh the preview image."""
+            self.log.info("Refresh button pressed.")
             self.external.refreshPreview(manual = True)
 
         def closePressed(self) -> None:
@@ -1189,10 +1247,12 @@ class CSLapse():
                 if messagebox.askyesno(title = "Are you sure you want to exit?", message = constants["texts"]["askAbort"]):
                     self.external.exitEvent.set()
                     self.root.event_generate('<<Abort>>', when = "tail")
+                    self.log.info("Abort process initiated by close button.")
             elif self.external.isAborting:
                 self.external.exitEvent.set()
                 self.showWarning(constants["texts"]["exitAfterAbortEnded"])
             else:
+                self.log.info("Exiting due to close button pressed.")
                 self.root.destroy()
 
         def configureWindow(self) -> None:
@@ -1208,8 +1268,9 @@ class CSLapse():
             self._gridMainFrame()
             self._gridPreviewFrame()
 
-
             self._configure()
+
+            self.log.info("Graphical user interface initiated and configured.")
 
 class Preview(object):
     """ Object that handles the preview functionaltiy in the GUI"""
@@ -1424,14 +1485,16 @@ class Preview(object):
         
 
 def main() -> None:
-    logging.config.dictConfig(get_logger_config_dict())
-    logger = logging.getLogger("cslapse")
-    logger.info("Logger initiated successfully")
+    logging.getLogger("cslapse").info("")
+    logging.getLogger("cslapse").info("-"*50)
+    logging.getLogger("cslapse").info("")
+    logging.getLogger("cslapse").info(f"CSLapse started with working directory '{currentDirectory}'.")
     with CSLapse() as O:
         O.gui.root.mainloop()
 
 
 if __name__ == "__main__":
+    logging.config.dictConfig(get_logger_config_dict())
     currentDirectory = Path(__file__).parent.resolve() # current directory
     constants = {
         "abort":False,
