@@ -135,7 +135,7 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
 
     log.info(f"Export started with command '{' '.join(cmd)}'")
 
-    #call CSLMapview.exe to export the image. Try again at fail, abort after manz tries.
+    #call CSLMapview.exe to export the image. Try again at fail, abort after many tries.
     for n in range(retry):
         try:
             #Call the program in a separate process
@@ -150,16 +150,22 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
             #Ensure that the image file was successfully created. 
             assert newFileName.exists()
             
-            log.info(f"Export of file '{newFileName}' finshed successfully after {n+1} attempts.")
+            log.info(f"Successfully exported file '{newFileName}' after {n+1} attempts.")
             return str(newFileName)
         except AbortException as error:
+            log.exception(f"Aborted while exporting file '{newFileName}'.")
             raise AbortException from error
         except subprocess.CalledProcessError as e:
+            log.warning(f"Process error while exporting file '{newFileName}'.")
             pass
         except AssertionError as e:
+            log.warning(f"File '{newFileName}' does not exist after exporting.")
             pass
         except Exception as e:
+            log.warning(f"Unknown exception while exporting file '{newFileName}'.")
             pass
+
+    log.warning(f"Failed to export file after {retry} attempts with command '{' '.join(cmd)}'")
 
     #Throw exception after repeatedly failing
     raise ExportError(str('Could not export file.\nCommand: "'
@@ -215,6 +221,7 @@ class CSLapse():
                 self.log.info("Tempfolder cleared or created successfully.")
                 return
             except Exception as e:
+                self.log.exception("Error while clearing / creating tempFolder.")
                 self.gui.askFatalError(str(e))
 
     def openFile(self, title: str, filetypes: List[Tuple], defDir: str = None) -> str:
@@ -250,29 +257,33 @@ class CSLapse():
             ExportError: non-fatal
             Other exceptions: non-fatal
         """
-        try:
-            exported = exportFile(
-                sample, 
-                self.tempFolder, 
-                self.collections["sampleCommand"],
-                1,
-                self.abortEvent
-                ) 
-            with self.lock:
-                self.vars["previewSource"] = Image.open(exported)
-            self.previewLoadedEvent.set()
-            return
-        except AbortException:
-            self.previewLoadErrorEvent.set()
-            return
-        except ExportError as e:
-            if not self.gui.askNonFatalError(str(e)):
+        while 1:
+            try:
+                exported = exportFile(
+                    sample, 
+                    self.tempFolder, 
+                    self.collections["sampleCommand"],
+                    1,
+                    self.abortEvent
+                    ) 
+                with self.lock:
+                    self.vars["previewSource"] = Image.open(exported)
+                self.previewLoadedEvent.set()
+                return
+            except AbortException:
+                #logging handled in exportfile
                 self.previewLoadErrorEvent.set()
                 return
-        except Exception as e:
-            if not self.gui.askNonFatalError(str(e)):
-                self.previewLoadErrorEvent.set()
-                return
+            except ExportError as e:
+                if not self.gui.askNonFatalError(str(e)):
+                    self.previewLoadErrorEvent.set()
+                    self.log.exception(f"Returning after failed export of sample file '{sample}'")
+                    return
+            except Exception as e:
+                if not self.gui.askNonFatalError(str(e)):
+                    self.previewLoadErrorEvent.set()
+                    self.log.exception(f"Returning after failed export due to unnown exception of sample file '{sample}'")
+                    return
 
     def refreshPreview(self, manual: bool = False) -> None:
         """Export the preview CSLMap file with current settings."""
@@ -346,10 +357,14 @@ class CSLapse():
                 raise AbortException from e
             except ExportError as e:
                 if not self.gui.askNonFatalError(str(e)):
+                    self.log.exception(f"Skipping file '{srcFile}' after too many unsuccessful attempts.")
                     return
+                self.log.info(f"Retrying to export '{srcFile}' after too many unsuccessful attempts.")
             except Exception as e:
                 if not self.gui.askNonFatalError(str(e)):
+                    self.log.exception(f"Skipping file '{srcFile}' after unknown exception.")
                     return
+                self.log.info(f"Retrying to export '{srcFile}' after unknown exception.")
         with self.lock:
             self.imageFiles.append(newFileName)
             self.vars["exportingDone"].set(self.vars["exportingDone"].get() + 1)
@@ -393,6 +408,7 @@ class CSLapse():
             self.exportingDoneEvent.set()
         except AbortException as e:
             self.abortEvent.set()
+            self.log.exception("Aborting export process due to AbortException")
             return
 
     def exportImageFiles(self) -> None:
@@ -446,11 +462,15 @@ class CSLapse():
                     )
                 break
             except AbortException as e:
+                self.log.exception("Aborted rendering video due to AbortException.")
                 raise AbortException from e
             except Exception as e:
                 if not self.gui.askAbortingError(str(e)):
+                    self.log.exception("Aborted rendering video due to ubnknown Exception.")
                     self.gui.root.event_generate('<<Abort>>', when = "tail")
                     raise AbortException("Aborted due to unresolved aborting error.") from e
+                else:
+                    self.log.warning("Continuing rendering video after unknown Exception.")
 
         try:
             i = 0
@@ -464,17 +484,23 @@ class CSLapse():
                         self.vars["renderingDone"].set(self.vars["renderingDone"].get()+ 1)
                     i += 1
                 except AbortException as e:
+                    self.log.exception("Aborted rendering video due to AbortException.")
                     raise AbortException from e
                 except cv2.error as e:
                     #For some reason it still cannot catch cv2 errors
                     if not self.gui.askNonFatalError(str(e)):
                         i += 1
-                        self.log.warning(f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
+                        self.log.exception(f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
+                    else:
+                        self.log.warning(f"Retrying adding image '{self.imageFiles[i]}' to video after cv2 Exception.")
                 except Exception as e:
                     if not self.gui.askNonFatalError(str(e)):
                         i += 1
                         self.log.warning(f"Skipping image '{self.imageFiles[i]}' after unknow Exception.")
+                    else:
+                        self.log.warning(f"Retrying adding image '{self.imageFiles[i]}' to video after unknown Exception.")
         except AbortException as e:
+            self.log.exception("Aborted rendering video due to AbortException.")
             raise AbortException from e
         finally:
             out.release()
@@ -1270,7 +1296,7 @@ class CSLapse():
 
             self._configure()
 
-            self.log.info("Graphical user interface initiated and configured.")
+            self.log.info("Graphical user interface configured.")
 
 class Preview(object):
     """ Object that handles the preview functionaltiy in the GUI"""
@@ -1485,12 +1511,13 @@ class Preview(object):
         
 
 def main() -> None:
-    logging.getLogger("cslapse").info("")
-    logging.getLogger("cslapse").info("-"*50)
-    logging.getLogger("cslapse").info("")
-    logging.getLogger("cslapse").info(f"CSLapse started with working directory '{currentDirectory}'.")
+    logging.getLogger("root").info("")
+    logging.getLogger("root").info("-"*50)
+    logging.getLogger("root").info("")
+    logging.getLogger("root").info(f"CSLapse started with working directory '{currentDirectory}'.")
     with CSLapse() as O:
         O.gui.root.mainloop()
+    logging.getLogger("root").info("CSLapse exited peacefully")
 
 
 if __name__ == "__main__":
