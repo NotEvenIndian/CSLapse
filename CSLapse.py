@@ -7,6 +7,10 @@ import concurrent.futures
 from typing import List, Tuple, Any, Callable
 from shutil import rmtree
 
+import logging
+import logging.config
+import logging.handlers
+
 import cv2
 
 import tkinter
@@ -16,13 +20,46 @@ from tkinter import messagebox
 
 from PIL import ImageTk, Image
 
-# Version 1.0.0 - release version
 # I know the code is extremely badly organized and the classes make almost no difference.
 #
 # This project was a huge learning experience for me as I have never worked with any of
 # these modules before. Nor have I made a program this large. Or released an application for public use.
 #
 # Suggestions for any sort of improvement are welcome.
+
+def get_logger_config_dict() -> dict:
+    """Return the logger configuration dictionary."""
+    dictionary = {
+        "version": 1,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S"
+            }
+        },
+        "handlers":{
+            "logfile": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "level": logging.INFO,
+                "formatter": "default",
+                "filename": "./cslapse.log",
+                "maxBytes": 1024,
+                "backupCount": 1
+            }
+        },
+        "loggers":{
+            "cslapse": {
+                "level": logging.INFO,
+                "handlers": ["logfile"]
+            },
+            "gui": {
+                "level": logging.INFO,
+                "handlers": ["logfile"]
+            }
+        }
+    }
+
+    return dictionary
 
 
 class AbortException(Exception):pass
@@ -1387,6 +1424,9 @@ class Preview(object):
         
 
 def main() -> None:
+    logging.config.dictConfig(get_logger_config_dict())
+    logger = logging.getLogger("cslapse")
+    logger.info("Logger initiated successfully")
     with CSLapse() as O:
         O.gui.root.mainloop()
 

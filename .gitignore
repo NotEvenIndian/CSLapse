@@ -2,3 +2,4 @@ env
 build
 local
 dist
+*.log 
