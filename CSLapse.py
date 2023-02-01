@@ -32,8 +32,8 @@ def get_logger_config_dict() -> dict:
     dictionary = {
         "version": 1,
         "formatters": {
-            "default": {
-                "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+            "basic": {
+                "format": "%(asctime)s %(levelname)s [%(name)s/%(threadName)s] %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S"
             }
         },
@@ -41,7 +41,7 @@ def get_logger_config_dict() -> dict:
             "logfile": {
                 "class": "logging.handlers.RotatingFileHandler",
                 "level": logging.INFO,
-                "formatter": "default",
+                "formatter": "basic",
                 "filename": "./cslapse.log",
                 "maxBytes": 200000,
                 "backupCount": 1
@@ -118,7 +118,7 @@ class ThreadCollector(threading.Thread):
         return
 
 
-def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortEvent: threading.Event = None) -> str:
+def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortEvent: threading.Event) -> str:
     """Call CSLMapView to export one image file and return outfile's name.
 
     Exceptions:
@@ -143,9 +143,8 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
 
             #Return prematurely on abort
             #Needs to be after export command, otherwise won't work. Probably dead Lock.
-            if abortEvent is not None:
-                if abortEvent.is_set():
-                    raise AbortException("Abort initiated on another thread.")
+            if abortEvent.is_set():
+                raise AbortException("Abort initiated on another thread.")
 
             #Ensure that the image file was successfully created. 
             assert newFileName.exists()
@@ -156,13 +155,13 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
             log.exception(f"Aborted while exporting file '{newFileName}'.")
             raise AbortException from error
         except subprocess.CalledProcessError as e:
-            log.warning(f"Process error while exporting file '{newFileName}'.")
+            log.exception(f"Process error while exporting file '{newFileName}'.")
             pass
         except AssertionError as e:
             log.warning(f"File '{newFileName}' does not exist after exporting.")
             pass
         except Exception as e:
-            log.warning(f"Unknown exception while exporting file '{newFileName}'.")
+            log.exception(f"Unknown exception while exporting file '{newFileName}'.")
             pass
 
     log.warning(f"Failed to export file after {retry} attempts with command '{' '.join(cmd)}'")
@@ -380,6 +379,7 @@ class CSLapse():
 
     def prepare(self) -> None:
         """Prepare variables and environment for exporting."""
+        self.log.info(f"Exporting process initiated.")
         self.isRunning = True
         self.isAborting = False
         self.abortEvent.clear()
@@ -387,7 +387,6 @@ class CSLapse():
         self.imageFiles = []
         self.futures = []
         self.gui.setGUI("startExport")
-        self.log.info("Exporting process started.")
 
     def run(self) -> None:
         """Export images and create video from them.
@@ -681,6 +680,7 @@ class CSLapse():
             rmtree(self.tempFolder, ignore_errors = True)
         collector = ThreadCollector([threading.current_thread()], counter = self.vars["threadCollecting"])
         collector.start()
+        collector.join()
         self.log.info("Cleanup after object done")
     
     class GUI(object):
@@ -1228,6 +1228,7 @@ class CSLapse():
 
         def submitPressed(self) -> None:
             """Check if all conditions are satified and start exporting if yes. Show warning if not."""
+            self.log.info(f'Submit button pressed with entry data:\nexefile={self.external.vars["exeFile"].get()}\nfps={self.external.vars["fps"].get()}\nwidth={self.external.vars["width"].get()}\nvideolenght={self.external.vars["videoLength"].get()}\nthreads={self.external.vars["threads"].get()}\nretry={self.external.vars["retry"].get()}')
             try:
                 if self.external.vars["exeFile"].get() == constants["noFileText"]:
                     self.showWarning(constants["texts"]["noExeMessage"])
@@ -1246,14 +1247,7 @@ class CSLapse():
                 else:
                     self.external.export()
             except Exception:
-                self.log.warning(f'Submit button pressed with faulty entry data: \
-                    exefile={self.external.vars["exeFile"].get()}, \
-                    samplefile={self.external.vars["sampleFile"].get()}, \
-                    fps={self.external.vars["fps"].get()}, \
-                    width={self.external.vars["width"].get()},\
-                    videolenght={self.external.vars["videoLength"].get()}, \
-                    threads={self.external.vars["threads"].get()}, \
-                    retry={self.external.vars["retry"].get()}')
+                self.log.exception("Incorrect entry data.")
                 self.showWarning("Something went wrong. Check your settings and try again.")
 
         def abortPressed(self) -> None:
@@ -1279,6 +1273,8 @@ class CSLapse():
                 self.showWarning(constants["texts"]["exitAfterAbortEnded"])
             else:
                 self.log.info("Exiting due to close button pressed.")
+                self.external.abortEvent.set()
+                self.external.exitEvent.set()
                 self.root.destroy()
 
         def configureWindow(self) -> None:
@@ -1297,6 +1293,7 @@ class CSLapse():
             self._configure()
 
             self.log.info("Graphical user interface configured.")
+
 
 class Preview(object):
     """ Object that handles the preview functionaltiy in the GUI"""
@@ -1511,13 +1508,18 @@ class Preview(object):
         
 
 def main() -> None:
-    logging.getLogger("root").info("")
-    logging.getLogger("root").info("-"*50)
-    logging.getLogger("root").info("")
-    logging.getLogger("root").info(f"CSLapse started with working directory '{currentDirectory}'.")
-    with CSLapse() as O:
-        O.gui.root.mainloop()
-    logging.getLogger("root").info("CSLapse exited peacefully")
+    log = logging.getLogger("root")
+    log.info("")
+    log.info("-"*50)
+    log.info("")
+    log.info(f"CSLapse started with working directory '{currentDirectory}'.")
+    try:
+        with CSLapse() as O:
+            O.gui.root.mainloop()
+    except Exception as e:
+        log.exception("An unhandled exception occoured.")
+        raise
+    log.info("CSLapse exited peacefully")
 
 
 if __name__ == "__main__":
