@@ -689,7 +689,7 @@ class CSLapse():
         collector.join()
         self.log.info("Cleanup after object done")
     
-    class GUI():
+class GUI():
         """Object that contains the GUI elements and methods of the program."""
 
         def _createMainFrame(self, cb, vars, filetypes, texts) -> None:
@@ -1369,9 +1369,6 @@ class App():
         self.lock = threading.Lock()
         self.log = logging.getLogger("app")
         self.root = tkinter.Tk()
-
-        self.exporter = Exporter(self,lock, self.events, self.constants)
-
         self.vars = {
             "exeFile":tkinter.StringVar(value = constants["noFileText"]),
             "sampleFile":tkinter.StringVar(value = constants["noFileText"]),
@@ -1389,6 +1386,8 @@ class App():
             "previewSource":"",
             "previewImage":""
         }
+
+        self.exporter = Exporter(self,lock, self.events, self.constants)
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         
         self.root.after(0, self.checkThreadEvents)
@@ -1639,53 +1638,6 @@ class App():
         if self.events["exitEvent"].is_set():
             self.root.destroy()
             self.log.info("Exiting after aborted export.")
-
-
-
-
-class CSLapse_window():
-    
-    def __init__(root: tkinter.Toplevel, vars: dict, callbacks: Callable[[None],None]):
-        self.log = logging.getLogger("gui")
-        self.popups = []
-        #self.external = parent
-        self.root = root
-        self._configure_window()
-        self.log.info("Window initiated successfully.")
-
-    def _configure_window(self) -> None:
-        self.root.title("CSLapse")
-        iconfile = resourcePath("media/thumbnail.ico")
-        self.root.iconbitmap(default = iconfile)
-
-    def progress_popup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
-        """Return a GUI popup window with a progressbar tied to var."""
-        win = tkinter.Toplevel(cursor = "watch")
-        label = ttk.Label(win, text = "Collecting threads: ")
-        progressLabel = ttk.Label(win, textvariable = var)
-        ofLabel = ttk.Label(win, text = " of ")
-        totalLabel = ttk.Label(win, text = maximum)
-        progressBar = ttk.Progressbar(win, variable = var, maximum = maximum)
-
-        label.grid(row = 0, column = 0, sticky = tkinter.EW)
-        progressLabel.grid(row = 0, column = 1, sticky = tkinter.EW)
-        ofLabel.grid(row = 0, column = 2, sticky = tkinter.EW)
-        totalLabel.grid(row = 0, column = 3, sticky = tkinter.EW)
-        progressBar.grid(row = 1, column = 0, columnspan = 5, sticky = tkinter.EW)
-
-        win.columnconfigure(4, weight = 1)
-        win.configure(padx = 5, pady = 5, border = 1, relief = tkinter.SOLID)
-
-        win.overrideredirect(1)
-        w = 400
-        h = 60
-        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
-        win.geometry(f"{w}x{h}+{x}+{y}")
-
-        self.popups.append(win)
-        self.log.info(f"Progress popup created: {var.get()}/{maximum}")
-        return win
 
 
 class Exporter():
@@ -1963,16 +1915,64 @@ class Exporter():
 
 
 
+class CSLapse_window():
+    
+    def __init__(root: tkinter.Toplevel, vars: dict, callbacks: dict):
+        self.log = logging.getLogger("gui")
+        self.popups = []
+        #self.external = parent
+        self.root = root
+        self._configure_window()
+        self.log.info("Window initiated successfully.")
+
+    def _configure_window(self) -> None:
+        self.root.title("CSLapse")
+        iconfile = resourcePath("media/thumbnail.ico")
+        self.root.iconbitmap(default = iconfile)
+
+    def progress_popup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
+        """Return a GUI popup window with a progressbar tied to var."""
+        win = tkinter.Toplevel(cursor = "watch")
+        label = ttk.Label(win, text = "Collecting threads: ")
+        progressLabel = ttk.Label(win, textvariable = var)
+        ofLabel = ttk.Label(win, text = " of ")
+        totalLabel = ttk.Label(win, text = maximum)
+        progressBar = ttk.Progressbar(win, variable = var, maximum = maximum)
+
+        label.grid(row = 0, column = 0, sticky = tkinter.EW)
+        progressLabel.grid(row = 0, column = 1, sticky = tkinter.EW)
+        ofLabel.grid(row = 0, column = 2, sticky = tkinter.EW)
+        totalLabel.grid(row = 0, column = 3, sticky = tkinter.EW)
+        progressBar.grid(row = 1, column = 0, columnspan = 5, sticky = tkinter.EW)
+
+        win.columnconfigure(4, weight = 1)
+        win.configure(padx = 5, pady = 5, border = 1, relief = tkinter.SOLID)
+
+        win.overrideredirect(1)
+        w = 400
+        h = 60
+        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
+
+        self.popups.append(win)
+        self.log.info(f"Progress popup created: {var.get()}/{maximum}")
+        return win
+
+
+
 class Content_frame(ABC):
     """A Frame widget that encloses a section of the gui that is shown or hidden together."""
 
-    def __init__(parent: tkinter.Widget, vars: dict, callbacks: Callable[[None],None]) -> None:
+    def __init__(parent: tkinter.Widget, vars: dict, callbacks: dict) -> None:
         self.frame = ttk.Frame(parent)
-        self.populate(vars, callbacks)
-        self.grid()
+        self._populate(vars, callbacks)
+        self._grid()
+        self._create_bindings(callbacks)
+        self._configure()
 
     @abstractmethod
-    def _populate(self,vars: dict, callbacks: Callable[[None],None]) -> None:
+    def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the frame."""
         pass
 
@@ -1981,12 +1981,11 @@ class Content_frame(ABC):
         """Grid the widgets contained in the frame."""
         pass
 
-    def _create_bindings(self) -> None:
+    def _create_bindings(self, callbacks: dict) -> None:
         """Bind events to input."""
         pass
 
-    def _set_state(self, state: str) -> None:
-        """Set the layout and visibility of children according to the parameter string."""
+    def _configure(self) -> None:
         pass
 
     def _show_widgets(self, * args: tkinter.Widget) -> None:
@@ -2009,6 +2008,10 @@ class Content_frame(ABC):
         for widget in args:
             widget.state(["disabled"])  
 
+    def set_state(self, state: str) -> None:
+        """Set the layout and visibility of children according to the parameter string."""
+        pass
+
     def show(self) -> None:
         """Show the frame."""
         self.frame.grid()
@@ -2018,11 +2021,448 @@ class Content_frame(ABC):
         self.frame.grid_remove()
 
 
-class Mainframe(Content_frame):
+class Main_frame(Content_frame):
     """Class for the main settings and export options frame."""
 
-    def __init__():
-        pass
+    def _populate(self, vars: dict, callbacks: dict) -> None:
+        self.fileSelectionBox = ttk.Labelframe(self.frame, text = "Files")
+        self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
+        self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exeFile"], cursor = constants["clickable"])
+        self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["openExe"])
+        self.sampleSelectLabel = ttk.Label(self.fileSelectionBox, text = "Select a cslmap file of your city")
+        self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sampleFile"], cursor = constants["clickable"])
+        self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["openSample"])
+        self.filesLoading = ttk.Progressbar(self.fileSelectionBox)
+        self.filesNumLabel = ttk.Label(self.fileSelectionBox, textvariable = vars["numOfFiles"])
+        self.filesLoadedLabel = ttk.Label(self.fileSelectionBox, text = "files found")
+
+        self.videoSettingsBox = ttk.Labelframe(self.frame, text = "Video settings")
+        self.fpsLabel = ttk.Label(self.videoSettingsBox, text = "Frames per second: ")
+        self.fpsEntry = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["fps"])
+        self.imageWidthLabel = ttk.Label(self.videoSettingsBox, text = "Width:")
+        self.imageWidthInput = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["width"])
+        self.imageWidthUnit = ttk.Label(self.videoSettingsBox, text = "pixels")
+        self.lengthLabel = ttk.Label(self.videoSettingsBox, text = "Video length:")
+        self.lengthInput = ttk.Entry(self.videoSettingsBox, width = 7, textvariable = vars["videoLength"])
+        self.lengthUnit = ttk.Label(self.videoSettingsBox, text = "frames")
+
+        self.advancedSettingBox = ttk.Labelframe(self.frame, text = "Advanced")
+        self.threadsLabel = ttk.Label(self.advancedSettingBox, text = "Threads:")
+        self.threadsEntry = ttk.Entry(self.advancedSettingBox, width = 5, textvariable = vars["threads"])
+        self.retryLabel = ttk.Label(self.advancedSettingBox, text = "Fail after:")
+        self.retryEntry = ttk.Entry(self.advancedSettingBox, width = 5, textvariable = vars["retry"])
+
+        self.progressFrame = ttk.Frame(self.frame)
+        self.exportingLabel = ttk.Label(self.progressFrame, text = "Exporting files:")
+        self.exportingDoneLabel = ttk.Label(self.progressFrame, textvariable = vars["exportingDone"])
+        self.exportingOfLabel = ttk.Label(self.progressFrame, text = " of ")
+        self.exportingTotalLabel = ttk.Label(self.progressFrame, textvariable = vars["videoLength"])
+        self.exportingProgress = ttk.Progressbar(self.progressFrame, orient = "horizontal", mode = "determinate", variable = vars["exportingDone"])
+        self.renderingLabel = ttk.Label(self.progressFrame, text = "Renderig video:")
+        self.renderingDoneLabel = ttk.Label(self.progressFrame, textvariable = vars["renderingDone"])
+        self.renderingOfLabel = ttk.Label(self.progressFrame, text = " of ")
+        self.renderingTotalLabel = ttk.Label(self.progressFrame)
+        self.renderingProgress = ttk.Progressbar(self.progressFrame, orient = "horizontal", mode = "determinate", variable = vars["renderingDone"])
+
+        self.submitBtn = ttk.Button(self.frame, text = "Export", cursor = constants["clickable"], command = callbacks["submit"])
+        self.abortBtn = ttk.Button(self.frame, text = "Abort", cursor = constants["clickable"], command = callbacks["abort"])
+
+    def _grid(self) -> None:
+        self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
+
+        self.fileSelectionBox.grid(column = 0, row = 0, sticky = tkinter.EW, padx = 2, pady = 5)
+        self.exeSelectLabel.grid(column = 0, row = 0, columnspan = 3, sticky = tkinter.EW)
+        self.exePath.grid(column = 0, row = 1, columnspan = 2, sticky = tkinter.EW)
+        self.exeSelectBtn.grid(column = 2, row = 1)
+        self.sampleSelectLabel.grid(column = 0, row = 2, columnspan = 3, sticky = tkinter.EW)
+        self.samplePath.grid(column = 0, row = 3, columnspan = 2, sticky = tkinter.EW)
+        self.sampleSelectBtn.grid(column = 2, row = 3)
+        self.filesNumLabel.grid(column = 0, row = 4, sticky = tkinter.W)
+        self.filesLoadedLabel.grid(column = 1, row = 4, sticky = tkinter.W)
+
+        self.videoSettingsBox.grid(column = 0, row = 1, sticky = tkinter.EW, padx = 2, pady = 10)
+        self.fpsLabel.grid(column = 0, row = 0, sticky = tkinter.W)
+        self.fpsEntry.grid(column = 1, row = 0, sticky = tkinter.EW)
+        self.imageWidthLabel.grid(column = 0, row = 1, sticky = tkinter.W)
+        self.imageWidthInput.grid(column = 1, row = 1, sticky = tkinter.EW)
+        self.imageWidthUnit.grid(column = 2, row = 1, sticky = tkinter.W)
+        self.lengthLabel.grid(column = 0, row = 2, sticky = tkinter.W)
+        self.lengthInput.grid(column = 1, row = 2, sticky = tkinter.W)
+        self.lengthUnit.grid(column = 2, row = 2, sticky = tkinter.W)
+
+        self.advancedSettingBox.grid(column = 0, row = 2, sticky = tkinter.EW, padx = 2, pady = 5)
+        self.threadsLabel.grid(column = 0, row = 0, sticky = tkinter.W)
+        self.threadsEntry.grid(column = 1, row = 0, sticky = tkinter.EW)
+        self.retryLabel.grid(column = 0, row = 1, sticky = tkinter.W)
+        self.retryEntry.grid(column = 1, row = 1, sticky = tkinter.EW)
+
+        self.progressFrame.grid(column = 0, row = 9, sticky = tkinter.EW)
+        self.exportingLabel.grid(column = 0, row = 0)
+        self.exportingDoneLabel.grid(column = 1, row = 0)
+        self.exportingOfLabel.grid(column = 2, row = 0)
+        self.exportingTotalLabel.grid(column = 3, row = 0)
+        self.exportingProgress.grid(column = 0, row = 1, columnspan = 5, sticky = tkinter.EW)
+
+        self.renderingLabel.grid(column = 0, row = 2)
+        self.renderingDoneLabel.grid(column = 1, row = 2)
+        self.renderingOfLabel.grid(column = 2, row = 2)
+        self.renderingTotalLabel.grid(column = 3, row = 2)
+        self.renderingProgress.grid(column = 0, row = 3, columnspan = 5, sticky = tkinter.EW)
+
+        self.submitBtn.grid(column = 0, row = 10, sticky = (tkinter.S, tkinter.E, tkinter.W))
+        self.abortBtn.grid(column = 0, row = 11, sticky = (tkinter.S, tkinter.E, tkinter.W))
+
+    def _create_bindings(self, callbacks: dict) -> None:
+        self.exePath.bind('<ButtonPress-1>', lambda event: callbacks["select_exe"]())
+        self.samplePath.bind('<ButtonPress-1>', lambda event: callbacks["select_sample"]())
+
+    def _configure(self) -> None:
+        self.frame.rowconfigure(8, weight = 1)
+        self.fileSelectionBox.columnconfigure(1, weight = 1)
+        self.progressFrame.columnconfigure(4, weight = 1)
+
+    def set_state(self, state: str) -> None:
+        if state == "startExport":
+            #self.external.vars["exportingDone"].set(0)
+            #self.exportingProgress.config(maximum = self.external.vars["videoLength"].get())
+            self._disable_widgets(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry,
+                self.imageWidthInput,
+                self.lengthInput,
+                self.threadsEntry,
+                self.retryEntry,
+            )
+            self._enable_widgets(self.abortBtn)
+            self._hide_widgets(
+                self.submitBtn, 
+                self.renderingProgress,
+                self.renderingLabel, 
+                self.renderingDoneLabel, 
+                self.renderingOfLabel, 
+                self.renderingTotalLabel
+            )
+            self._show_widgets(
+                self.progressFrame, 
+                self.exportingProgress, 
+                self.exportingLabel,
+                self.exportingDoneLabel, 
+                self.exportingOfLabel, 
+                self.exportingTotalLabel, 
+                self.abortBtn
+            )
+        elif state == "startRender":
+            #self.external.vars["renderingDone"].set(0)
+            #self.renderingTotalLabel.configure(text = len(self.external.imageFiles))
+            #self.renderingProgress.config(maximum = len(self.external.imageFiles))
+            self._disable_widgets(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput,
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry,
+            )
+            self._enable_widgets(self.abortBtn)
+            self._hide_widgets(
+                self.submitBtn, 
+                self.exportingProgress, 
+                self.exportingLabel, 
+                self.exportingDoneLabel,
+                self.exportingOfLabel,
+                self.exportingTotalLabel
+            )
+            self._show_widgets(
+                self.progressFrame,
+                self.renderingProgress,
+                self.renderingLabel,
+                self.renderingDoneLabel,
+                self.renderingOfLabel,
+                self.renderingTotalLabel
+            )
+        elif state == "renderDone":
+            self._disable_widgets(self.abortBtn)
+            self._enable_widgets(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry,
+                self.imageWidthInput,
+                self.lengthInput,
+                self.threadsEntry,
+                self.retryEntry,
+            )
+            self._show_widgets(self.submitBtn)
+            self._hide_widgets(
+                self.progressFrame,
+                self.abortBtn
+            )
+        elif state == "defaultState":
+            for p in self.popups:
+                p.destroy()
+            self._disable_widgets(
+                self.progressFrame,
+                self.abortBtn,
+            )
+            self._enable_widgets(
+                self.submitBtn, 
+                self.exeSelectBtn, 
+                self.sampleSelectBtn, 
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry, 
+            )
+            self._hide_widgets(
+                self.progressFrame,
+                self.abortBtn,
+            )
+            self._show_widgets(self.submitBtn)
+        elif state == "aborting":
+            self._disable_widgets(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry,
+                self.abortBtn,
+            )
+            #self.root.configure(cursor = constants["previewCursor"])
+        elif state == "afterAbort":
+            for p in self.popups:
+                p.destroy()
+            self._disable_widgets(self.abortBtn)
+            self._enable_widgets(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry,
+                self.abortBtn,
+            )
+            self._hide_widgets(
+                self.progressFrame,
+                self.abortBtn
+            )
+            self._show_widgets(self.submitBtn)
+            #self.root.configure(cursor = "")
+
+
+class Preview_frame(Content_frame):
+    """Class for the always visible right-hand side with the preview."""
+
+    def _populate(self, vars: dict, callbacks: dict) -> None:
+        self.canvasFrame = ttk.Frame(self.frame, relief = tkinter.SUNKEN, borderwidth = 2)
+        self.preview = Preview(self, self.frame)
+        self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text = "Refresh", cursor = constants["clickable"],
+            command = lambda:callbacks["refreshPreview"]())
+        self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text = "Fit", cursor = constants["clickable"],
+            command = self.preview.fitToCanvas)
+        self.originalSizeBtn = ttk.Button(self.preview.canvas, text = "100%", cursor = constants["clickable"],
+            command = self.preview.scaleToOriginal)
+
+        self.canvasSettingFrame = ttk.Frame(self.frame)
+        self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
+        self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areasChanged"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
+        self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: self.preview.update_printarea(float(vars["areas"].get())))
+
+        self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
+        self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants["clickable"])
+        self.rotationSelection.menu = tkinter.Menu(self.rotationSelection, tearoff = 0)
+        self.rotationSelection["menu"] = self.rotationSelection.menu
+        for option in constants["rotaOptions"]:
+            self.rotationSelection.menu.add_radiobutton(label = option, variable = vars["rotation"])
+
+    def _grid(self) -> None:
+        self.frame.grid(column = 20, row = 0, sticky = tkinter.NSEW)
+
+        self.canvasFrame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
+        self.preview.canvas.grid(column = 0, row = 0, sticky = tkinter.NSEW)
+        self.refreshPreviewBtn.grid(column = 1, row = 0, sticky = tkinter.NE)
+        self.fitToCanvasBtn.grid(column = 1, row = 2, sticky = tkinter.SE)
+        self.originalSizeBtn.grid(column = 1, row = 3, sticky = tkinter.SE)
+
+        self.canvasSettingFrame.grid(column = 0, row = 1, sticky = tkinter.NSEW)
+        self.zoomLabel.grid(column = 0, row = 0, sticky = tkinter.W)
+        self.zoomEntry.grid(column = 1, row = 0, sticky = tkinter.W)
+        self.zoomSlider.grid(column = 2, row = 0, sticky = tkinter.EW)
+
+        #Functionality not implemented yet
+        #self.rotationLabel.grid(column = 0, row = 1, columnspan = 3, sticky = tkinter.W)
+        #self.rotationSelection.grid(column = 1, row = 1, columnspan = 2, sticky = tkinter.W)
+
+    def _create_bindings(self, callbacks: dict) -> None:
+        self.preview.createBindings()
+
+    def _configure(self) -> None:
+        self.frame.columnconfigure(0, weight = 1)
+        self.frame.rowconfigure(0, weight = 1)
+        self.canvasFrame.columnconfigure(0, weight = 1)
+        self.canvasFrame.rowconfigure(0, weight = 1)
+        self.preview.canvas.columnconfigure(0, weight = 1)
+        self.preview.canvas.rowconfigure(1, weight = 1)
+        self.canvasSettingFrame.columnconfigure(2, weight = 1)
+        self.preview.canvas.configure(background = "white")
+
+    def set_state(self, state: str) -> None:
+        if state == "startExport":
+            self._disable(
+                self.zoomSlider, 
+                self.zoomEntry
+            )
+        elif state == "startRender":
+            self.renderingTotalLabel.configure(text = len(self.external.imageFiles))
+            self.renderingProgress.config(maximum = len(self.external.imageFiles))
+            self._disable(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput,
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry, 
+                self.zoomSlider, 
+                self.zoomEntry
+            )
+            self._enable(self.abortBtn)
+            self._hide(
+                self.submitBtn, 
+                self.exportingProgress, 
+                self.exportingLabel, 
+                self.exportingDoneLabel,
+                self.exportingOfLabel,
+                self.exportingTotalLabel
+            )
+            self._show(
+                self.progressFrame,
+                self.renderingProgress,
+                self.renderingLabel,
+                self.renderingDoneLabel,
+                self.renderingOfLabel,
+                self.renderingTotalLabel
+            )
+        elif state == "renderDone":
+            self._disable(self.abortBtn)
+            self._enable(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry,
+                self.imageWidthInput,
+                self.lengthInput,
+                self.threadsEntry,
+                self.retryEntry,
+                self.zoomSlider,
+                self.zoomEntry
+            )
+            self._show(self.submitBtn)
+            self._hide(
+                self.progressFrame,
+                self.abortBtn
+            )
+        elif state == "defaultState":
+            for p in self.popups:
+                p.destroy()
+            self._disable(
+                self.progressFrame,
+                self.abortBtn, 
+                self.fitToCanvasBtn, 
+                self.originalSizeBtn
+            )
+            self._enable(
+                self.submitBtn, 
+                self.exeSelectBtn, 
+                self.sampleSelectBtn, 
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry, 
+                self.zoomSlider, 
+                self.zoomEntry, 
+                self.rotationSelection
+            )
+            self._hide(
+                self.progressFrame,
+                self.abortBtn,
+                self.refreshPreviewBtn,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn
+            )
+            self._show(self.submitBtn)
+        elif state == "previewLoading":
+            self._disable(
+                self.refreshPreviewBtn,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn
+            )
+            #TODO: Add loading image to canvas
+            #TODO: Add loading image to refresh button
+            self.preview.canvas.configure(cursor = "watch")
+        elif state == "previewLoaded":
+            self._enable(
+                self.refreshPreviewBtn,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn
+            )
+            self._show(
+                self.refreshPreviewBtn,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn
+            )
+            self.preview.canvas.configure(cursor = constants["previewCursor"])
+        elif state == "previewLoadError":
+            self._enable(self.refreshPreviewBtn)
+            self._show(self.refreshPreviewBtn)
+            self.preview.canvas.configure(cursor = "")
+        elif state == "aborting":
+            self._disable(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry,
+                self.zoomSlider, 
+                self.zoomEntry, 
+                self.abortBtn, 
+                self.fitToCanvasBtn, 
+                self.originalSizeBtn, 
+                self.refreshPreviewBtn
+            )
+            self.root.configure(cursor = constants["previewCursor"])
+        elif state == "afterAbort":
+            for p in self.popups:
+                p.destroy()
+            self._disable(self.abortBtn)
+            self._enable(
+                self.exeSelectBtn,
+                self.sampleSelectBtn,
+                self.fpsEntry, 
+                self.imageWidthInput, 
+                self.lengthInput, 
+                self.threadsEntry, 
+                self.retryEntry,
+                self.zoomSlider, 
+                self.zoomEntry, 
+                self.abortBtn, 
+                self.fitToCanvasBtn, 
+                self.originalSizeBtn, 
+                self.refreshPreviewBtn
+            )
+            self._hide(
+                self.progressFrame,
+                self.abortBtn
+            )
+            self._show(self.submitBtn)
+            self.root.configure(cursor = "")
+            self.preview.canvas.configure(cursor = constants["previewCursor"])
 
 
 class Preview():
