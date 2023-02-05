@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sys
 import subprocess
 from datetime import datetime
@@ -183,7 +184,7 @@ def timeStamp() -> str:
     return str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
 
 
-def resourcePath(relativePath: str) -> Path:
+def resource_path(relative_path: str) -> Path:
     """
     Get absolute path to resource, works for dev and for PyInstaller.
 
@@ -194,7 +195,7 @@ def resourcePath(relativePath: str) -> Path:
         base_path = sys._MEIPASS
     except Exception:
         base_path = Path(__file__).parent.resolve()
-    return Path(base_path, relativePath)
+    return Path(base_path, relative_path)
 
 
 def roundToTwoDecimals(var: tkinter.StringVar) -> None:
@@ -1220,7 +1221,7 @@ class GUI():
             self.external = parent
             self.root = tkinter.Tk()
             self.root.title("CSLapse")
-            iconfile = resourcePath("media/thumbnail.ico")
+            iconfile = resource_path("media/thumbnail.ico")
             self.root.iconbitmap(default = iconfile)
             self.log.info("GUI initiated successfully.")
 
@@ -1311,14 +1312,14 @@ class App():
         
     def __exit__(self, exc_type, exc_value, traceback):
         """Clean up after the object"""
-        if self.exporter.tempFolder is not None and self.xrporter.tempFolder.exists():
+        if self.exporter.tempFolder is not None and self.exporter.tempFolder.exists():
             rmtree(self.exporter.tempFolder, ignore_errors = True)
         collector = ThreadCollector([threading.current_thread()], counter = self.vars["threadCollecting"])
         collector.start()
         collector.join()
         self.log.info("Cleanup after App done")
 
-    def __init__():
+    def __init__(self):
         self.constants = {
             "abort":False,
             "sampleExportWidth":2000,
@@ -1349,7 +1350,7 @@ class App():
             },
             "clickable":"hand2",
             "previewCursor":"fleur",
-            "noPreviewImage": resourcePath("media/NOIMAGE.png"),
+            "noPreviewImage": resource_path("media/NOIMAGE.png"),
             "sampleCommand":["__exeFile__", "__srcFile__", "-output", "__outFile__", "-silent", "-imagewidth", str(constants["sampleExportWidth"]), "-area", str(constants["defaultAreas"])]
         }
         self.events = {
@@ -1362,7 +1363,7 @@ class App():
             "abortFinishedEvent": threading.Event(),
             "exitEvent": threading.Event()
         }
-        for e in self.events:
+        for e in self.events.values():
             e.clear()
         
         self.timestamp = timeStamp()
@@ -1386,11 +1387,20 @@ class App():
             "previewSource":"",
             "previewImage":""
         }
+        callbacks = {
+            "submit": self.null,
+            "abort": self.null,
+            "select_exe": self.select_exe,
+            "select_sample": self.select_sample,
+            "areasChanged": self.null,
+            "refreshPreview": self.refresh_pressed
 
-        self.exporter = Exporter(self,lock, self.events, self.constants)
+        }
+
+        self.exporter = Exporter(self.lock, self.events, self.constants)
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         
-        self.root.after(0, self.checkThreadEvents)
+        self.root.after(0, self._checkThreadEvents)
 
         self.log.info("App object initiated.")
 
@@ -1496,20 +1506,26 @@ class App():
             #self.cleanupAfterAbort()
         self.root.after(100, self._checkThreadEvents)
 
-    def refreshPreview(self, manual: bool = False) -> None:
-        """Export the preview CSLMap file with current settings."""
+    def refresh_pressed(self) -> None:
         if self.vars["exeFile"].get() == self.constants["noFileText"]:
-            if manual:
-                self.showWarning(title = "Warning", message = self.constants["texts"]["noExeMessage"])
+            self.showWarning(title = "Warning", message = self.constants["texts"]["noExeMessage"])
             return
         if self.vars["sampleFile"].get() == self.constants["noFileText"]:
-            if manual:
-                self.showWarning(title = "Warning", message = self.constants["texts"]["noSampleMessage"])
+            self.showWarning(title = "Warning", message = self.constants["texts"]["noSampleMessage"])
             return
         sample = self.exporter.get_file(self.vars["videoLength"].get() - 1)
         if sample == "":
-            if manual:
-                self.showWarning(title = "Warning", message = "Not enough files to match video frames!")
+            self.showWarning(title = "Warning", message = "Not enough files to match video frames!")
+            return
+
+    def refresh_preview(self) -> None:
+        """Export the preview CSLMap file with current settings."""
+        if self.vars["exeFile"].get() == self.constants["noFileText"]:
+            return
+        if self.vars["sampleFile"].get() == self.constants["noFileText"]:
+            return
+        sample = self.exporter.get_file(self.vars["videoLength"].get() - 1)
+        if sample == "":
             return
         #self.gui.setGUI("previewLoading")
         cmd = self.constants["sampleCommand"][:]
@@ -1518,7 +1534,7 @@ class App():
 
         self.log.info("Refreshing preview started.")
         exporter_thread = threading.Thread(
-            target = self.exportSample,
+            target = self.export_sample,
             args = (
                 cmd,
                 self.exporter.get_file(self.vars["videoLength"].get() - 1),
@@ -1527,7 +1543,7 @@ class App():
         )
         exporter_thread.start()
 
-    def exportSample(self, command: List[str], sample: str, retry: int) -> None:
+    def export_sample(self, command: List[str], sample: str, retry: int) -> None:
         """
         Export png from the cslmap file that will be the given frame of the video.
 
@@ -1571,31 +1587,31 @@ class App():
         self.log.info(f"File '{filename}' selected.")
         return filename
 
-    def select_sample(self, title: str) -> None:
+    def select_sample(self) -> None:
         """Select sample file from dialog and set variables accordingly."""
-        selected_file = self.open_file(title, self.constants["filetypes"]["cslmap"])
+        selected_file = self.open_file(self.constants["texts"]["openSampleTitle"], self.constants["filetypes"]["cslmap"])
         if selected_file == self.vars["sampleFile"].get():
             return
         elif selected_file != "":
             self.vars["sampleFile"].set(selected_file)
-            self.setSampleFile(selected_file)
-            num_of_files = self.exporter.collectRawFiles(selected_file)
+            self.exporter.set_sample_file(selected_file)
+            num_of_files = self.exporter.collect_raw_files(selected_file)
             self.vars["numOfFiles"].set(num_of_files)
             if self.vars["videoLength"].get() == 0:
                 self.vars["videoLength"].set(num_of_files)
             else:
                 self.vars["videoLength"].set(min(self.vars["videoLength"].get(), num_of_files))
-            #self.refreshPreview()
+            self.refresh_preview()
         else:
             self.vars["sampleFile"].set(self.constants["noFileText"])
 
-    def select_exe(self, title: str) -> None:
+    def select_exe(self) -> None:
         """Select SCLMapViewer.exe from dialog and set variables accordingly."""
-        selected_file = self.open_file(title, self.filetypes["exe"])
+        selected_file = self.open_file(self.constants["texts"]["openSampleTitle"], self.constants["filetypes"]["exe"])
         if selected_file != "":
             self.vars["exeFile"].set(selected_file)
             self.constants["sampleCommand"][0] = selected_file
-            #self.refreshPreview()
+            self.refresh_preview()
         else:
             self.vars["exeFile"].set(self.constants["noFileText"])
 
@@ -1641,12 +1657,12 @@ class App():
 
 
 class Exporter():
-    def __init__(lock: threading.Lock, events: dict, constants: dict):
+    def __init__(self, lock: threading.Lock, events: dict, constants: dict):
         self.log = logging.getLogger("exporter")
         self.lock = lock
         self.source_directory = None # Path type, the directory where cslmap files are loaded from
         self.city_name = None # string, the name of the city
-        self.tempFolder = None # Path type, the location where temporary files are created
+        self.tempFolder = resource_path(Path(f"temp-{timeStamp()}")) # Path type, the location where temporary files are created
         self.raw_files = []    # Collected cslmap files with matching city name
         self.image_files = []
         self.futures = []   # concurrent.futures.Future objects that are exporting images
@@ -1656,7 +1672,7 @@ class Exporter():
 
         self.abort_event = events["abortEvent"]
         self.imagefiles_exported_event = events["imageFilesExportedEvent"]
-        self.exporting_done_event = ecents["exportingDoneEvent"]
+        self.exporting_done_event = events["exportingDoneEvent"]
         self.filetypes = constants["filetypes"]
 
     def get_file(self, n: int) -> str:
@@ -1701,14 +1717,14 @@ class Exporter():
                 return
             except Exception as e:
                 self.log.exception("Error while clearing / creating tempFolder.")
+                raise
                 #self.gui.askFatalError(str(e))
         
     def set_sample_file(self, sample: str) -> None:
         """Store city name and location of the sample file."""
-        sample_file = Path(sample_file)
+        sample_file = Path(sample)
         self.source_directory = sample_file.parent
-        self.city_name = sample.stem.split("-")[0]
-        #self.tempFolder = Path(self.source_directory, f"temp{self.timestamp}")
+        self.city_name = sample_file.stem.split("-")[0]
         self.clearTempFolder()
 
     def set_exefile(self, exefile: str) -> None:
@@ -1917,18 +1933,30 @@ class Exporter():
 
 class CSLapse_window():
     
-    def __init__(root: tkinter.Toplevel, vars: dict, callbacks: dict):
+    def __init__(self, root: tkinter.Toplevel, vars: dict, callbacks: dict):
         self.log = logging.getLogger("gui")
         self.popups = []
         #self.external = parent
         self.root = root
         self._configure_window()
+        self.frames = self.create_frames(vars, callbacks)
+        self.set_state("default_state")
         self.log.info("Window initiated successfully.")
+
+    def create_frames(self, vars: dict, callbacks: dict) -> List[Content_frame]:
+        return [
+            Main_frame(self.root, vars, callbacks),
+            Preview_frame(self.root, vars, callbacks)
+        ]
 
     def _configure_window(self) -> None:
         self.root.title("CSLapse")
-        iconfile = resourcePath("media/thumbnail.ico")
+        iconfile = resource_path("media/thumbnail.ico")
         self.root.iconbitmap(default = iconfile)
+
+        self.root.columnconfigure(20, weight = 1)
+        self.root.rowconfigure(0, weight = 1)
+        self.root.configure(padx = 2, pady = 2)
 
     def progress_popup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
         """Return a GUI popup window with a progressbar tied to var."""
@@ -1959,12 +1987,33 @@ class CSLapse_window():
         self.log.info(f"Progress popup created: {var.get()}/{maximum}")
         return win
 
+    def set_state(self, state: str) -> None:
+        if state == "startExport":
+            self.external.vars["exportingDone"].set(0)
+        elif state == "startRender":
+            self.external.vars["renderingDone"].set(0)
+        elif state == "default_state":
+            for p in self.popups:
+                p.destroy()
+        elif state == "aborting":
+            self.root.configure(cursor = constants["previewCursor"])
+        elif state == "afterAbort":
+            for p in self.popups:
+                p.destroy()
+            self.root.configure(cursor = "")
+
+        for f in self.frames:
+            f.set_state(state)
+        
+        self.log.info(f"GUI set to {state}")
+
+
 
 
 class Content_frame(ABC):
     """A Frame widget that encloses a section of the gui that is shown or hidden together."""
 
-    def __init__(parent: tkinter.Widget, vars: dict, callbacks: dict) -> None:
+    def __init__(self, parent: tkinter.Widget, vars: dict, callbacks: dict) -> None:
         self.frame = ttk.Frame(parent)
         self._populate(vars, callbacks)
         self._grid()
@@ -2028,10 +2077,10 @@ class Main_frame(Content_frame):
         self.fileSelectionBox = ttk.Labelframe(self.frame, text = "Files")
         self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
         self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exeFile"], cursor = constants["clickable"])
-        self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["openExe"])
+        self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["select_exe"])
         self.sampleSelectLabel = ttk.Label(self.fileSelectionBox, text = "Select a cslmap file of your city")
         self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sampleFile"], cursor = constants["clickable"])
-        self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["openSample"])
+        self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["select_sample"])
         self.filesLoading = ttk.Progressbar(self.fileSelectionBox)
         self.filesNumLabel = ttk.Label(self.fileSelectionBox, textvariable = vars["numOfFiles"])
         self.filesLoadedLabel = ttk.Label(self.fileSelectionBox, text = "files found")
@@ -2122,7 +2171,7 @@ class Main_frame(Content_frame):
         self.progressFrame.columnconfigure(4, weight = 1)
 
     def set_state(self, state: str) -> None:
-        if state == "startExport":
+        if state == "start_export":
             #self.external.vars["exportingDone"].set(0)
             #self.exportingProgress.config(maximum = self.external.vars["videoLength"].get())
             self._disable_widgets(
@@ -2152,7 +2201,7 @@ class Main_frame(Content_frame):
                 self.exportingTotalLabel, 
                 self.abortBtn
             )
-        elif state == "startRender":
+        elif state == "start_render":
             #self.external.vars["renderingDone"].set(0)
             #self.renderingTotalLabel.configure(text = len(self.external.imageFiles))
             #self.renderingProgress.config(maximum = len(self.external.imageFiles))
@@ -2182,7 +2231,7 @@ class Main_frame(Content_frame):
                 self.renderingOfLabel,
                 self.renderingTotalLabel
             )
-        elif state == "renderDone":
+        elif state == "render_done":
             self._disable_widgets(self.abortBtn)
             self._enable_widgets(
                 self.exeSelectBtn,
@@ -2198,9 +2247,7 @@ class Main_frame(Content_frame):
                 self.progressFrame,
                 self.abortBtn
             )
-        elif state == "defaultState":
-            for p in self.popups:
-                p.destroy()
+        elif state == "default_state":
             self._disable_widgets(
                 self.progressFrame,
                 self.abortBtn,
@@ -2232,9 +2279,7 @@ class Main_frame(Content_frame):
                 self.abortBtn,
             )
             #self.root.configure(cursor = constants["previewCursor"])
-        elif state == "afterAbort":
-            for p in self.popups:
-                p.destroy()
+        elif state == "after_abort":
             self._disable_widgets(self.abortBtn)
             self._enable_widgets(
                 self.exeSelectBtn,
@@ -2251,7 +2296,6 @@ class Main_frame(Content_frame):
                 self.abortBtn
             )
             self._show_widgets(self.submitBtn)
-            #self.root.configure(cursor = "")
 
 
 class Preview_frame(Content_frame):
@@ -2311,92 +2355,38 @@ class Preview_frame(Content_frame):
         self.preview.canvas.configure(background = "white")
 
     def set_state(self, state: str) -> None:
-        if state == "startExport":
-            self._disable(
+        if state == "start_export":
+            self._disable_widgets(
                 self.zoomSlider, 
                 self.zoomEntry
             )
-        elif state == "startRender":
-            self.renderingTotalLabel.configure(text = len(self.external.imageFiles))
-            self.renderingProgress.config(maximum = len(self.external.imageFiles))
-            self._disable(
-                self.exeSelectBtn,
-                self.sampleSelectBtn,
-                self.fpsEntry, 
-                self.imageWidthInput,
-                self.lengthInput, 
-                self.threadsEntry, 
-                self.retryEntry, 
+        elif state == "start_render":
+            self._disable_widgets(
                 self.zoomSlider, 
                 self.zoomEntry
             )
-            self._enable(self.abortBtn)
-            self._hide(
-                self.submitBtn, 
-                self.exportingProgress, 
-                self.exportingLabel, 
-                self.exportingDoneLabel,
-                self.exportingOfLabel,
-                self.exportingTotalLabel
-            )
-            self._show(
-                self.progressFrame,
-                self.renderingProgress,
-                self.renderingLabel,
-                self.renderingDoneLabel,
-                self.renderingOfLabel,
-                self.renderingTotalLabel
-            )
-        elif state == "renderDone":
-            self._disable(self.abortBtn)
-            self._enable(
-                self.exeSelectBtn,
-                self.sampleSelectBtn,
-                self.fpsEntry,
-                self.imageWidthInput,
-                self.lengthInput,
-                self.threadsEntry,
-                self.retryEntry,
+        elif state == "render_done":
+            self._enable_widgets(
                 self.zoomSlider,
                 self.zoomEntry
             )
-            self._show(self.submitBtn)
-            self._hide(
-                self.progressFrame,
-                self.abortBtn
-            )
-        elif state == "defaultState":
-            for p in self.popups:
-                p.destroy()
-            self._disable(
-                self.progressFrame,
-                self.abortBtn, 
+        elif state == "default_state":
+            self._disable_widgets(
                 self.fitToCanvasBtn, 
                 self.originalSizeBtn
             )
-            self._enable(
-                self.submitBtn, 
-                self.exeSelectBtn, 
-                self.sampleSelectBtn, 
-                self.fpsEntry, 
-                self.imageWidthInput, 
-                self.lengthInput, 
-                self.threadsEntry, 
-                self.retryEntry, 
+            self._enable_widgets(
                 self.zoomSlider, 
                 self.zoomEntry, 
                 self.rotationSelection
             )
-            self._hide(
-                self.progressFrame,
-                self.abortBtn,
+            self._hide_widgets(
                 self.refreshPreviewBtn,
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
-            self._show(self.submitBtn)
-        elif state == "previewLoading":
-            self._disable(
+        elif state == "preview_loading":
+            self._disable_widgets(
                 self.refreshPreviewBtn,
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
@@ -2404,64 +2394,38 @@ class Preview_frame(Content_frame):
             #TODO: Add loading image to canvas
             #TODO: Add loading image to refresh button
             self.preview.canvas.configure(cursor = "watch")
-        elif state == "previewLoaded":
-            self._enable(
+        elif state == "preview_loaded":
+            self._enable_widgets(
                 self.refreshPreviewBtn,
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
-            self._show(
+            self._show_widgets(
                 self.refreshPreviewBtn,
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
             self.preview.canvas.configure(cursor = constants["previewCursor"])
-        elif state == "previewLoadError":
-            self._enable(self.refreshPreviewBtn)
-            self._show(self.refreshPreviewBtn)
+        elif state == "preview_load_error":
+            self._enable_widgets(self.refreshPreviewBtn)
+            self._show_widgets(self.refreshPreviewBtn)
             self.preview.canvas.configure(cursor = "")
         elif state == "aborting":
-            self._disable(
-                self.exeSelectBtn,
-                self.sampleSelectBtn,
-                self.fpsEntry, 
-                self.imageWidthInput, 
-                self.lengthInput, 
-                self.threadsEntry, 
-                self.retryEntry,
-                self.zoomSlider, 
-                self.zoomEntry, 
-                self.abortBtn, 
-                self.fitToCanvasBtn, 
-                self.originalSizeBtn, 
+            self._disable_widgets(
+                self.zoomSlider,
+                self.zoomEntry,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn,
                 self.refreshPreviewBtn
             )
-            self.root.configure(cursor = constants["previewCursor"])
-        elif state == "afterAbort":
-            for p in self.popups:
-                p.destroy()
-            self._disable(self.abortBtn)
-            self._enable(
-                self.exeSelectBtn,
-                self.sampleSelectBtn,
-                self.fpsEntry, 
-                self.imageWidthInput, 
-                self.lengthInput, 
-                self.threadsEntry, 
-                self.retryEntry,
-                self.zoomSlider, 
-                self.zoomEntry, 
-                self.abortBtn, 
-                self.fitToCanvasBtn, 
-                self.originalSizeBtn, 
+        elif state == "after_abort":
+            self._enable_widgets(
+                self.zoomSlider,
+                self.zoomEntry,
+                self.fitToCanvasBtn,
+                self.originalSizeBtn,
                 self.refreshPreviewBtn
             )
-            self._hide(
-                self.progressFrame,
-                self.abortBtn
-            )
-            self._show(self.submitBtn)
-            self.root.configure(cursor = "")
             self.preview.canvas.configure(cursor = constants["previewCursor"])
 
 
@@ -2692,6 +2656,21 @@ def main() -> None:
     log.info("CSLapse exited peacefully")
 
 
+def new_main() -> None:
+    log = logging.getLogger("root")
+    log.info("")
+    log.info("-"*50)
+    log.info("")
+    log.info(f"CSLapse started with working directory '{currentDirectory}'.")
+    try:
+        with App() as app:
+            app.root.mainloop()
+    except Exception as e:
+        log.exception("An unhandled exception occoured.")
+        raise
+    log.info("CSLapse exited peacefully")
+
+
 if __name__ == "__main__":
     logging.config.dictConfig(get_logger_config_dict())
     currentDirectory = Path(__file__).parent.resolve() # current directory
@@ -2722,6 +2701,6 @@ if __name__ == "__main__":
         },
         "clickable":"hand2",
         "previewCursor":"fleur",
-        "noPreviewImage": resourcePath("media/NOIMAGE.png")
+        "noPreviewImage": resource_path("media/NOIMAGE.png")
     }
-    main()
+    new_main()
