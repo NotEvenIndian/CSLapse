@@ -241,6 +241,7 @@ class constants:
     defaultAreas = 9.0
     noFileText = "No file selected"
     rotaOptions = ["0°", "90°", "180°", "270°"]
+    pages = ["general_page", "targets_page", "public_transport_page", "terrain_page"]
     class texts:
         openExeTitle = "Select CSLMapViewer.exe"
         openSampleTitle = "Select a cslmap save of your city"
@@ -257,6 +258,8 @@ class constants:
     class filetypes:
         exe = [("Executables", "*.exe"), ("All files", "*")]
         cslmap = [("CSLMap files", ("*.cslmap", "*.cslmap.gz")), ("All files", "*")]
+    inactive_page_color = "#dddddd"
+    active_page_color = "#eeeeee"
     clickable = "hand2"
     previewCursor = "fleur"
     noPreviewImage =  resource_path("media/NOIMAGE.png")
@@ -494,7 +497,8 @@ class App():
             "select_sample": self.select_sample,
             "areas_entered": self.root.register(self.areas_entered),
             "areas_changed": self.areas_changed,
-            "refresh_preview": self.refresh_pressed
+            "refresh_preview": self.refresh_pressed,
+            "set_page": self.set_page
         }
         return callbacks
 
@@ -594,6 +598,8 @@ class App():
             events.close.set()
             self.root.destroy()
 
+    def set_page(self, page_num: int) -> None:
+        self.window.set_state(constants.pages[page_num])
 
 class Exporter():
     """Class responsible for exporting images and assembling the video from them."""
@@ -936,9 +942,11 @@ class CSLapse_window():
 
     def create_frames(self, vars: dict, callbacks: dict) -> List[Content_frame]:
         """Initialize and save the tkinter frames that make up the gui."""
+        self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
         return [
+            self.pages_frame,
             self.main_frame,
             self.preview_frame
         ]
@@ -950,7 +958,7 @@ class CSLapse_window():
         self.root.iconbitmap(default = iconfile)
 
         self.root.columnconfigure(20, weight = 1)
-        self.root.rowconfigure(0, weight = 1)
+        self.root.rowconfigure(1, weight = 1)
         self.root.configure(padx = 2, pady = 2)
 
     def progress_popup(self, var: tkinter.IntVar, maximum: int) -> tkinter.Toplevel:
@@ -1079,7 +1087,7 @@ class Main_frame(Content_frame):
         """Create the widgets contained in the main frame."""
         self.fileSelectionBox = ttk.Labelframe(self.frame, text = "Files")
         self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
-        self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exe_file"], cursor = constants.clickable)
+        self.exePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["exe_file"], cursor = constants.clickable)
         self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants.clickable, command = callbacks["select_exe"])
         self.sampleSelectLabel = ttk.Label(self.fileSelectionBox, text = "Select a cslmap file of your city")
         self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sample_file"], cursor = constants.clickable)
@@ -1121,7 +1129,7 @@ class Main_frame(Content_frame):
 
     def _grid(self) -> None:
         """Grid the widgets contained in the main frame."""
-        self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
+        self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
         self.fileSelectionBox.grid(column = 0, row = 0, sticky = tkinter.EW, padx = 2, pady = 5)
         self.exeSelectLabel.grid(column = 0, row = 0, columnspan = 3, sticky = tkinter.EW)
@@ -1173,12 +1181,17 @@ class Main_frame(Content_frame):
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the main frame."""
         self.frame.rowconfigure(8, weight = 1)
+        self.frame.columnconfigure(0, weight = 1)
         self.fileSelectionBox.columnconfigure(1, weight = 1)
         self.progressFrame.columnconfigure(4, weight = 1)
 
     def set_state(self, state: str) -> None:
         """Set options for the wisgets in the main frame."""
-        if state == "start_export":
+        if state == "general_page":
+            self.show()
+        elif state in constants.pages:
+            self.hide()
+        elif state == "start_export":
             self._disable_widgets(
                 self.exeSelectBtn,
                 self.sampleSelectBtn,
@@ -1336,7 +1349,7 @@ class Preview_frame(Content_frame):
 
     def _grid(self) -> None:
         """Grid the widgets contained in the preview frame."""
-        self.frame.grid(column = 20, row = 0, sticky = tkinter.NSEW)
+        self.frame.grid(column = 20, row = 0, rowspan = 2, sticky = tkinter.NSEW)
 
         self.canvasFrame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
         self.preview.canvas.grid(column = 0, row = 0, sticky = tkinter.NSEW)
@@ -1446,6 +1459,42 @@ class Preview_frame(Content_frame):
     def get_preview(self) -> Preview:
         """Return the preview object of the frame.""" 
         return self.preview
+
+class Pages_frame(Content_frame):
+
+    def _populate(self, vars: dict, callbacks: dict) -> None:
+        """Create the widgets contained in the pages frame."""
+        self.general_label = ttk.Label(self.frame, text = "General", cursor = constants.clickable, background = constants.active_page_color)
+        self.drawing_target_label = ttk.Label(self.frame, text = "Drawing targets", cursor = constants.clickable, background = constants.inactive_page_color)
+        self.public_transport_label = ttk.Label(self.frame, text = "Public transport", cursor = constants.clickable, background = constants.inactive_page_color)
+        self.terrain_label = ttk.Label(self.frame, text = "Terrain", cursor = constants.clickable, background = constants.inactive_page_color)
+
+    def _grid(self) -> None:
+        """Grid the widgets contained in the pages frame."""
+        self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
+        self.general_label.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2)
+        self.drawing_target_label.grid(column = 1, row = 0, sticky = tkinter.NSEW, padx = 2)
+        self.public_transport_label.grid(column = 2, row = 0, sticky = tkinter.NSEW, padx = 2)
+        self.terrain_label.grid(column = 3, row = 0, sticky = tkinter.NSEW, padx = 2)
+
+    def _create_bindings(self, callbacks: dict) -> None:
+        """Bind events to widgets in the main frame."""
+        self.general_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](0))
+        self.drawing_target_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](1))
+        self.public_transport_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](2))
+        self.terrain_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](3))
+
+    def _configure(self) -> None:
+        self.frame.columnconfigure(100, weight = 1)
+
+    def set_state(self, state: str) -> None:
+        """Set options for the wisgets in the main frame."""
+        if state in constants.pages:
+            for w in self.frame.winfo_children():
+                w.configure(background = constants.inactive_page_color)
+            self.frame.winfo_children()[constants.pages.index(state)].configure(background = constants.active_page_color)
+
+
 
 
 class Preview():
