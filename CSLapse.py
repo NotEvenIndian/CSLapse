@@ -418,7 +418,7 @@ class App():
         return filename
 
     def select_sample(self) -> None:
-        """Select sample file from dialog and set variables accordingly."""
+        """Ask user to select sample file from dialog and set variables accordingly."""
         selected_file = self.open_file(constants.texts.openSampleTitle, constants.filetypes.cslmap)
         if selected_file == self.vars["sample_file"].get():
             return
@@ -436,7 +436,7 @@ class App():
             self.vars["sample_file"].set(constants.noFileText)
 
     def select_exe(self) -> None:
-        """Select SCLMapViewer.exe from dialog and set variables accordingly."""
+        """Ask user to select SCLMapViewer.exe from dialog and set variables accordingly."""
         selected_file = self.open_file(constants.texts.openSampleTitle, constants.filetypes.exe)
         if selected_file != "":
             self.vars["exe_file"].set(selected_file)
@@ -486,18 +486,20 @@ class App():
             self.log.info("Exiting after aborted export.")
             
     def register_callbacks(self) -> dict:
+        """Prepare the callback methods for tkinter widgets and return a dictionary containing them."""
         callbacks = {
             "submit": self.submit_pressed,
             "abort": self.abort_pressed,
             "select_exe": self.select_exe,
             "select_sample": self.select_sample,
             "areas_entered": self.root.register(self.areas_entered),
-            "areas_slider": self.areas_slider_changed,
+            "areas_changed": self.areas_changed,
             "refresh_preview": self.refresh_pressed
         }
         return callbacks
 
     def areas_entered(self, action, new_text) -> bool:
+        """Callback to be executed when the areas widget is changed."""
         if action == "0":
             return True
         try:
@@ -510,6 +512,12 @@ class App():
             return False
 
     def refresh_pressed(self) -> None:
+        """
+        Callback to be called when the refresh preview button is pressed.
+        
+        Check if all required variables are set correctly and if yes, refresh the preview.
+        Show a warning message otherwise.
+        """
         if self.vars["exe_file"].get() == constants.noFileText:
             show_warning(title = "Warning", message = constants.texts.noExeMessage)
             return
@@ -562,11 +570,16 @@ class App():
             self.log.info("Abort initiated by abort button.")
             self.root.event_generate('<<Abort>>', when = "tail")
 
-    def areas_slider_changed(self) -> None:
-        self.preview.update_printarea(float(vars["areas"].get()))
+    def areas_changed(self) -> None:
+        """
+        Callback to be called when the areas slider is moved.
+
+        Updates the printarea rectangle to the appropriate size.
+        """
+        self.preview.update_printarea(float(self.vars["areas"].get()))
         
     def close_pressed(self) -> None:
-        """Aks user if really wnats to quit. If yes, initiate abort and exit afterwards"""
+        """Ask user if really wnats to quit. If yes, initiate abort and exit afterwards"""
         if self.exporter.is_running:
             if messagebox.askyesno(title = "Are you sure you want to exit?", message = constants.texts.askAbort):
                 events.close.set()
@@ -583,6 +596,7 @@ class App():
 
 
 class Exporter():
+    """Class responsible for exporting images and assembling the video from them."""
     def __init__(self, lock: threading.Lock):
         self.log = logging.getLogger("exporter")
         self.lock = lock
@@ -608,6 +622,7 @@ class Exporter():
             return self.raw_files[n]
 
     def get_num_of_exported_files(self) -> int:
+        """Return the number of files exported in theis export process."""
         with self.lock:
             num = len(self.image_files)
         return num
@@ -655,6 +670,7 @@ class Exporter():
         self.clear_temp_folder()
 
     def set_exefile(self, exefile: str) -> None:
+        """Set the executable used for exporting to exefile."""
         self.exefile = exefile
 
     def collect_raw_files(self, filename: str) -> int:
@@ -919,6 +935,7 @@ class CSLapse_window():
         self.log.info("Window initiated successfully.")
 
     def create_frames(self, vars: dict, callbacks: dict) -> List[Content_frame]:
+        """Initialize and save the tkinter frames that make up the gui."""
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
         return [
@@ -927,6 +944,7 @@ class CSLapse_window():
         ]
 
     def _configure_window(self) -> None:
+        """Configure options for the window and the root widget."""
         self.root.title("CSLapse")
         iconfile = resource_path("media/thumbnail.ico")
         self.root.iconbitmap(default = iconfile)
@@ -965,6 +983,7 @@ class CSLapse_window():
         return win
 
     def set_state(self, state: str) -> None:
+        """Set options for the window and the root widget, then for each of the frames."""
         if state == "default_state":
             for p in self.popups:
                 p.destroy()
@@ -981,12 +1000,15 @@ class CSLapse_window():
         self.log.info(f"Window set to {state}")
 
     def get_preview(self) -> Preview:
+        """Return the preview object of the preview frame."""
         return self.preview_frame.get_preview()
 
     def set_export_limit(self, limit: int) -> None:
+        """Set the size of the progress bar for exported images."""
         self.main_frame.set_export_limit(limit)
 
     def set_video_limit(self, limit: int) -> None:
+        """Set the size of the progressbar for video frames."""
         self.main_frame.set_video_limit(limit)
 
 
@@ -1015,6 +1037,7 @@ class Content_frame(ABC):
         pass
 
     def _configure(self) -> None:
+        """Set configuration optionis for the widgets in the frame."""
         pass
 
     def _show_widgets(self, * args: tkinter.Widget) -> None:
@@ -1053,6 +1076,7 @@ class Main_frame(Content_frame):
     """Class for the main settings and export options frame."""
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
+        """Create the widgets contained in the main frame."""
         self.fileSelectionBox = ttk.Labelframe(self.frame, text = "Files")
         self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
         self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exe_file"], cursor = constants.clickable)
@@ -1096,6 +1120,7 @@ class Main_frame(Content_frame):
         self.abortBtn = ttk.Button(self.frame, text = "Abort", cursor = constants.clickable, command = callbacks["abort"])
 
     def _grid(self) -> None:
+        """Grid the widgets contained in the main frame."""
         self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
         self.fileSelectionBox.grid(column = 0, row = 0, sticky = tkinter.EW, padx = 2, pady = 5)
@@ -1141,15 +1166,18 @@ class Main_frame(Content_frame):
         self.abortBtn.grid(column = 0, row = 11, sticky = (tkinter.S, tkinter.E, tkinter.W))
 
     def _create_bindings(self, callbacks: dict) -> None:
+        """Bind events to widgets in the main frame."""
         self.exePath.bind('<ButtonPress-1>', lambda event: callbacks["select_exe"]())
         self.samplePath.bind('<ButtonPress-1>', lambda event: callbacks["select_sample"]())
 
     def _configure(self) -> None:
+        """Set configuration optionis for the widgets in the main frame."""
         self.frame.rowconfigure(8, weight = 1)
         self.fileSelectionBox.columnconfigure(1, weight = 1)
         self.progressFrame.columnconfigure(4, weight = 1)
 
     def set_state(self, state: str) -> None:
+        """Set options for the wisgets in the main frame."""
         if state == "start_export":
             self._disable_widgets(
                 self.exeSelectBtn,
@@ -1272,9 +1300,11 @@ class Main_frame(Content_frame):
             self._show_widgets(self.submitBtn)
 
     def set_export_limit(self, limit: int) -> None:
+        """Set the size of the progress bar for exported images."""
         self.exportingProgress.config(maximum = limit)
 
     def set_video_limit(self, limit: int) -> None:
+        """Set the size of the progressbar for video frames."""
         self.renderingProgress.config(maximum = limit)
         self.renderingTotalLabel.configure(text = limit)
 
@@ -1282,6 +1312,7 @@ class Preview_frame(Content_frame):
     """Class for the always visible right-hand side with the preview."""
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
+        """Create the widgets contained in the preview frame."""
         self.canvasFrame = ttk.Frame(self.frame, relief = tkinter.SUNKEN, borderwidth = 2)
         self.preview = Preview(self.frame)
         self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text = "Refresh", cursor = constants.clickable,
@@ -1293,8 +1324,8 @@ class Preview_frame(Content_frame):
 
         self.canvasSettingFrame = ttk.Frame(self.frame)
         self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-        self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areas_entered"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
-        self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants.clickable, command = lambda _: callbacks["areas_slider"])
+        self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areas_entered"], "%d", "%P"), validate = "all", command = lambda: callbacks["areas_changed"]())
+        self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants.clickable, command = lambda _: callbacks["areas_changed"]())
 
         self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
         self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants.clickable)
@@ -1304,6 +1335,7 @@ class Preview_frame(Content_frame):
             self.rotationSelection.menu.add_radiobutton(label = option, variable = vars["rotation"])
 
     def _grid(self) -> None:
+        """Grid the widgets contained in the preview frame."""
         self.frame.grid(column = 20, row = 0, sticky = tkinter.NSEW)
 
         self.canvasFrame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
@@ -1322,9 +1354,11 @@ class Preview_frame(Content_frame):
         #self.rotationSelection.grid(column = 1, row = 1, columnspan = 2, sticky = tkinter.W)
 
     def _create_bindings(self, callbacks: dict) -> None:
+        """Bind events to widgets in the preview frame."""
         self.preview.createBindings()
 
     def _configure(self) -> None:
+        """Set configuration optionis for the widgets in the preview frame."""
         self.frame.columnconfigure(0, weight = 1)
         self.frame.rowconfigure(0, weight = 1)
         self.canvasFrame.columnconfigure(0, weight = 1)
@@ -1335,6 +1369,7 @@ class Preview_frame(Content_frame):
         self.preview.canvas.configure(background = "white")
 
     def set_state(self, state: str) -> None:
+        """Set options for the wisgets in the preview frame."""
         if state == "start_export":
             self._disable_widgets(
                 self.zoomSlider, 
@@ -1409,6 +1444,7 @@ class Preview_frame(Content_frame):
             self.preview.canvas.configure(cursor = constants.previewCursor)
 
     def get_preview(self) -> Preview:
+        """Return the preview object of the frame.""" 
         return self.preview
 
 
@@ -1631,22 +1667,7 @@ def main() -> None:
     log.info("")
     log.info("-"*50)
     log.info("")
-    log.info(f"CSLapse started with working directory '{currentDirectory}'.")
-    try:
-        with CSLapse() as O:
-            O.gui.root.mainloop()
-    except Exception as e:
-        log.exception("An unhandled exception occoured.")
-        raise
-    log.info("CSLapse exited peacefully")
-
-
-def new_main() -> None:
-    log = logging.getLogger("root")
-    log.info("")
-    log.info("-"*50)
-    log.info("")
-    log.info(f"CSLapse started with working directory '{currentDirectory}'.")
+    log.info(f"CSLapse started with working directory '{current_directory}'.")
     try:
         with App() as app:
             app.root.mainloop()
@@ -1658,5 +1679,5 @@ def new_main() -> None:
 
 if __name__ == "__main__":
     logging.config.dictConfig(get_logger_config_dict())
-    currentDirectory = Path(__file__).parent.resolve() # current directory
-    new_main()
+    current_directory = Path(__file__).parent.resolve() # current directory
+    main()
