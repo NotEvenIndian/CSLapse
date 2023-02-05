@@ -23,12 +23,10 @@ from PIL import ImageTk, Image
 
 from abc import ABC, abstractmethod
 
-# I know the code is extremely badly organized and the classes make almost no difference.
-#
-# This project was a huge learning experience for me as I have never worked with any of
-# these modules before. Nor have I made a program this large. Or released an application for public use.
-#
 # Suggestions for any sort of improvement are welcome.
+
+class AbortException(Exception):pass
+class ExportError(Exception):pass
 
 def get_logger_config_dict() -> dict:
     """Return the logger configuration dictionary."""
@@ -71,10 +69,6 @@ def get_logger_config_dict() -> dict:
     }
 
     return dictionary
-
-
-class AbortException(Exception):pass
-class ExportError(Exception):pass
 
 
 class ThreadCollector(threading.Thread):
@@ -125,60 +119,6 @@ class ThreadCollector(threading.Thread):
         return
 
 
-def exportFile(source_file: str, out_folder: Path, cmd: List[str], retry: int) -> str:
-    """Call CSLMapView to export one image file and return outfile's name.
-
-    Exceptions:
-        Abortexpression: propagates
-        Cannot export file after [retry] tries: raises ExportError
-    """
-
-    log = logging.getLogger("root")
-
-    #Prepare command that calls cslmapview.exe
-    new_file_name = Path(out_folder, source_file.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
-    cmd[1] = str(source_file)
-    cmd[3] = str(new_file_name)
-
-    log.info(f"Export started with command '{' '.join(cmd)}'")
-
-    #call CSLMapview.exe to export the image. Try again at fail, abort after many tries.
-    for n in range(retry):
-        try:
-            #Call the program in a separate process
-            subprocess.run(cmd, shell = False, stderr = subprocess.DEVNULL, stdout = subprocess.DEVNULL, check = False)
-
-            #Return prematurely on abort
-            #Needs to be after export command, otherwise won't work. Probably dead Lock.
-            if events.abort.is_set():
-                raise AbortException("Abort initiated on another thread.")
-
-            #Ensure that the image file was successfully created. 
-            assert new_file_name.exists()
-            
-            log.info(f"Successfully exported file '{new_file_name}' after {n+1} attempts.")
-            return str(new_file_name)
-        except AbortException as error:
-            log.exception(f"Aborted while exporting file '{new_file_name}'.")
-            raise AbortException from error
-        except subprocess.CalledProcessError as e:
-            log.exception(f"Process error while exporting file '{new_file_name}'.")
-            pass
-        except AssertionError as e:
-            log.warning(f"File '{new_file_name}' does not exist after exporting.")
-            pass
-        except Exception as e:
-            log.exception(f"Unknown exception while exporting file '{new_file_name}'.")
-            pass
-
-    log.warning(f"Failed to export file after {retry} attempts with command '{' '.join(cmd)}'")
-
-    #Throw exception after repeatedly failing
-    raise ExportError(str('Could not export file.\nCommand: "'
-        + ' '.join(cmd)
-        + '"\nThis problem can arise normally, usually when resources are taken.'))
-
-
 def timestamp() -> str:
     """Return a timestamp in format hhmmss."""
     return str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
@@ -203,7 +143,83 @@ def roundToTwoDecimals(var: tkinter.StringVar) -> None:
     var.set(str(round(float(var.get()), 2)))
 
 
+def show_warning(message: str, title: str = "Warning") -> None:
+    """
+    Show warning dialog box.
+    
+    Warnings are for when an action can not be performed currently
+    but the issue can be resolved within the application.
+
+    For more serious issues use errors.
+    """
+    log = logging.getLogger("root")
+    log.info(f"Warning shown: {title} | {message}")
+    messagebox.showwarning(title, message)
+
+def show_info(message: str, title: str = "Info") -> None:
+    """Show info dialog box with given message and title."""
+    log = logging.getLogger("root")
+    log.info(f"Info shown: {title} | {message}")
+    messagebox.showinfo(title, message)
+
+def ask_non_fatal_error(message: str, title: str = "Error") -> bool:
+    """
+    Show error dialog box.
+
+    Returns True  if the user wants to retry, False otherwise.
+    
+    Non-fatal errors are for when an action can not be performed currently
+    and can not be resolved entirely within the application,
+    but can be resumed and successfully completed from the current state
+    after changing some settings on the user's machine.
+
+    Non-fatal errors can be dismissed.
+    """
+    log = logging.getLogger("root")
+    log.info(f"Non-fatal error shown: {title} | {message}")
+    return messagebox.askretrycancel(title, message)
+
+def ask_aborting_error(message: str, title: str = "Fatal error") -> None:
+    """
+    Show Aborting error dialog box.
+    
+    Initiates abort if the user cancels.
+
+    Aborting errors are for when an action cannot be performed
+    that is an integral part of the exporting process.
+    Aborting errors do not threaten exitin the rogram,
+    only aborting the exporting process.
+
+    The user can decide to retry and continue exporting or abort it.
+    """
+    log = logging.getLogger("root")
+    message += "\n\nRetry or exporting will be aborted."
+    log.info(f"Aborting error shown: {title} | {message}")
+    if not messagebox.askretrycancel(title, message):
+        log.info(f"Abort initiated from aborting error: {title} | {message}")
+        events.abort.set()
+
+def ask_fatal_error(message: str, title: str = "Fatal error") -> bool:
+    """
+    Show fatal error dialgbox.
+
+    Returns True  if the user wants to retry, False otherwise.
+    
+    Fatal errors are for when an action cannot be performed
+    which is an essential part of the program.
+    Fatal errors lead to termination that should be initiated by the caller.
+    
+    The user can decide to retry and continue the program
+    or Cancel and exit prematurely.
+    """
+    log = logging.getLogger("root")
+    message += "\n\nRetry or the program will exit automatically."
+    log.info(f"Fatal error shown: {title} | {message}")
+    return messagebox.askretrycancel(title, message)
+
+
 class events:
+    """Namespace containing threading events used by the application."""
     abort = threading.Event()
     preview_loaded = threading.Event()
     preview_load_error = threading.Event()
@@ -301,75 +317,6 @@ class App():
         """Placeholder function, do nothing."""
         pass 
 
-    def showWarning(self, message: str, title: str = "Warning") -> None:
-        """
-        Show warning dialog box.
-        
-        Warnings are for when an action can not be performed currently
-        but the issue can be resolved within the application.
-
-        For more serious issues use errors.
-        """
-        self.log.info(f"Warning shown: {title} | {message}")
-        messagebox.showwarning(title, message)
-
-    def showInfo(self, message: str, title: str = "Info") -> None:
-        """Show info dialog box with given message and title."""
-        self.log.info(f"Info shown: {title} | {message}")
-        messagebox.showinfo(title, message)
-
-    def askNonFatalError(self, message: str, title: str = "Error") -> bool:
-        """
-        Show error dialog box.
-
-        Returns True  if the user wants to retry, False otherwise.
-        
-        Non-fatal errors are for when an action can not be performed currently
-        and can not be resolved entirely within the application,
-        but can be resumed and successfully completed from the current state
-        after changing some settings on the user's machine.
-
-        Non-fatal errors can be dismissed.
-        """
-        self.log.info(f"Non-fatal error shown: {title} | {message}")
-        return messagebox.askretrycancel(title, message)
-
-    def askAbortingError(self, message: str, title: str = "Fatal error") -> None:
-        """
-        Show Aborting error dialog box.
-        
-        Initiates abort if the user cancels.
-
-        Aborting errors are for when an action cannot be performed
-        that is an integral part of the exporting process.
-        Aborting errors do not threaten exitin the rogram,
-        only aborting the exporting process.
-
-        The user can decide to retry and continue exporting or abort it.
-        """
-        message += "\n\nRetry or exporting will be aborted."
-        self.log.info(f"Aborting error shown: {title} | {message}")
-        if not messagebox.askretrycancel(title, message):
-            self.log.info(f"Abort initiated from aborting error: {title} | {message}")
-            self.root.event_generate('<<Abort>>', when = "tail")
-
-    def askFatalError(self, message: str, title: str = "Fatal error") -> bool:
-        """
-        Show fatal error dialgbox.
-
-        Returns True  if the user wants to retry, False otherwise.
-        
-        Fatal errors are for when an action cannot be performed
-        which is an essential part of the program.
-        Fatal errors lead to termination that should be initiated by the caller.
-        
-        The user can decide to retry and continue the program
-        or Cancel and exit prematurely.
-        """
-        message += "\n\nRetry or the program will exit automatically."
-        self.log.info(f"Fatal error shown: {title} | {message}")
-        return messagebox.askretrycancel(title, message)
-
     def _checkThreadEvents(self) -> None:
         """Check if the threading events are set, repeat after 100 ms."""
         if events.preview_loaded.is_set():
@@ -397,8 +344,7 @@ class App():
             events.exporting_done.clear()
             self.cleanup_after_success()
             self.window.set_state("render_done")
-            #TODO: FIX completion message
-            self.showInfo(f"See your timelapse at ?????", "Video completed")
+            show_info(f"See your timelapse at {self.exporter.out_file}", "Video completed")
         if events.abort_finished.is_set():
             events.abort_finished.clear()
             self.cleanup_after_abort()
@@ -442,9 +388,8 @@ class App():
         """
         while 1:
             try:
-                exported = exportFile(
+                exported = self.exporter.export_file(
                     sample,
-                    self.exporter.temp_folder, 
                     command,
                     retry
                     ) 
@@ -456,12 +401,12 @@ class App():
                 events.preview_load_error.set()
                 return
             except ExportError as e:
-                if not self.askNonFatalError(str(e)):
+                if not ask_non_fatal_error(str(e)):
                     events.preview_load_error.set()
                     self.log.exception(f"Returning after failed export of sample file '{sample}'")
                     return
             except Exception as e:
-                if not self.askNonFatalError(str(e)):
+                if not ask_non_fatal_error(str(e)):
                     events.preview_load_error.set()
                     self.log.exception(f"Returning after failed export due to unnown exception of sample file '{sample}'")
                     return
@@ -510,7 +455,7 @@ class App():
         Impossible to recover state afterwards.
         """
         if not self.exporter.can_abort():
-            self.showWarning(constants.texts.abortAlreadyRunning)
+            show_warning(constants.texts.abortAlreadyRunning)
             return
 
         if threading.current_thread() is not threading.main_thread():
@@ -546,13 +491,13 @@ class App():
             "abort": self.abort_pressed,
             "select_exe": self.select_exe,
             "select_sample": self.select_sample,
-            "areas_button": self.root.register(self.areas_button_pressed),
+            "areas_entered": self.root.register(self.areas_entered),
             "areas_slider": self.areas_slider_changed,
             "refresh_preview": self.refresh_pressed
         }
         return callbacks
 
-    def areas_button_pressed(self, action, new_text) -> bool:
+    def areas_entered(self, action, new_text) -> bool:
         if action == "0":
             return True
         try:
@@ -566,14 +511,14 @@ class App():
 
     def refresh_pressed(self) -> None:
         if self.vars["exe_file"].get() == constants.noFileText:
-            self.showWarning(title = "Warning", message = constants.texts.noExeMessage)
+            show_warning(title = "Warning", message = constants.texts.noExeMessage)
             return
         if self.vars["sample_file"].get() == constants.noFileText:
-            self.showWarning(title = "Warning", message = constants.texts.noSampleMessage)
+            show_warning(title = "Warning", message = constants.texts.noSampleMessage)
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
-            self.showWarning(title = "Warning", message = "Not enough files to match video frames!")
+            show_warning(title = "Warning", message = "Not enough files to match video frames!")
             return
         self.refresh_preview()
 
@@ -582,19 +527,19 @@ class App():
         self.log.info(f'Submit button pressed with entry data:\nexefile={self.vars["exe_file"].get()}\nfps={self.vars["fps"].get()}\nwidth={self.vars["width"].get()}\nvideolenght={self.vars["video_length"].get()}\nthreads={self.vars["threads"].get()}\nretry={self.vars["retry"].get()}')
         try:
             if self.vars["exe_file"].get() == constants.noFileText:
-                self.showWarning(constants.texts.noExeMessage)
+                show_warning(constants.texts.noExeMessage)
             elif self.vars["sample_file"].get() == constants.noFileText:
-                self.showWarning(constants.texts.noSampleMessage)
+                show_warning(constants.texts.noSampleMessage)
             elif not self.vars["fps"].get() > 0:
-                self.showWarning(constants.texts.invalidFPSMessage)
+                show_warning(constants.texts.invalidFPSMessage)
             elif not self.vars["width"].get() > 0:
-                self.showWarning(constants.texts.invalidWidthMessage)
+                show_warning(constants.texts.invalidWidthMessage)
             elif not self.vars["video_length"].get() > 0:
-                self.showWarning(constants.texts.invalidLengthMessage)
+                show_warning(constants.texts.invalidLengthMessage)
             elif not self.vars["threads"].get() > 0:
-                self.showWarning(constants.texts.invalidThreadsMessage)
+                show_warning(constants.texts.invalidThreadsMessage)
             elif not self.vars["retry"].get() > -1:
-                self.showWarning(constants.texts.invalidRetryMessage)
+                show_warning(constants.texts.invalidRetryMessage)
             else:
                 if not self.exporter.export(
                     self.vars["width"].get(),
@@ -609,16 +554,13 @@ class App():
                     self.showWoarning("An export operation is already running!")
         except Exception:
             self.log.exception("Incorrect entry data.")
-            self.showWarning("Something went wrong. Check your settings and try again.")
+            show_warning("Something went wrong. Check your settings and try again.")
 
     def abort_pressed(self) -> None:
         """Ask user if really wants to abort. Generate abort tkinter event if yes."""
         if messagebox.askyesno(title = "Abort action?", message = constants.texts.askAbort):
             self.log.info("Abort initiated by abort button.")
             self.root.event_generate('<<Abort>>', when = "tail")
-
-    def areas_button_pressed(self) -> None:
-        pass
 
     def areas_slider_changed(self) -> None:
         self.preview.update_printarea(float(vars["areas"].get()))
@@ -632,7 +574,7 @@ class App():
                 self.log.info("Abort process initiated by close button.")
         elif self.exporter.is_aborting:
             events.close.set()
-            self.showWarning(constants.texts.exitAfterAbortEnded)
+            show_warning(constants.texts.exitAfterAbortEnded)
         else:
             self.log.info("Exiting due to close button pressed.")
             events.abort.set()
@@ -701,8 +643,8 @@ class Exporter():
                 return
             except Exception as e:
                 self.log.exception("Error while clearing / creating temp_folder.")
-                raise
-                #self.gui.askFatalError(str(e))
+                if not ask_fatal_error(str(e)):
+                    raise
         
     def set_sample_file(self, sample: str) -> None:
         """Store city name and location of the sample file."""
@@ -723,6 +665,57 @@ class Exporter():
                 self.source_directory.iterdir()
             ))
         return len(self.raw_files)
+
+    def export_file(self, source_file: str, cmd: List[str], retry: int) -> str:
+        """Call CSLMapView to export one image file and return outfile's name.
+
+        Exceptions:
+            Abortexpression: propagates
+            Cannot export file after [retry] tries: raises ExportError
+        """
+
+        #Prepare command that calls cslmapview.exe
+        new_file_name = Path(self.temp_folder, source_file.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
+        cmd[1] = str(source_file)
+        cmd[3] = str(new_file_name)
+
+        self.log.info(f"Export started with command '{' '.join(cmd)}'")
+
+        #call CSLMapview.exe to export the image. Try again at fail, abort after many tries.
+        for n in range(retry):
+            try:
+                #Call the program in a separate process
+                subprocess.run(cmd, shell = False, stderr = subprocess.DEVNULL, stdout = subprocess.DEVNULL, check = False)
+
+                #Return prematurely on abort
+                #Needs to be after export command, otherwise won't work. Probably dead Lock.
+                if events.abort.is_set():
+                    raise AbortException("Abort initiated on another thread.")
+
+                #Ensure that the image file was successfully created. 
+                assert new_file_name.exists()
+                
+                self.log.info(f"Successfully exported file '{new_file_name}' after {n+1} attempts.")
+                return str(new_file_name)
+            except AbortException as error:
+                self.log.exception(f"Aborted while exporting file '{new_file_name}'.")
+                raise AbortException from error
+            except subprocess.CalledProcessError as e:
+                self.log.exception(f"Process error while exporting file '{new_file_name}'.")
+                pass
+            except AssertionError as e:
+                self.log.warning(f"File '{new_file_name}' does not exist after exporting.")
+                pass
+            except Exception as e:
+                self.log.exception(f"Unknown exception while exporting file '{new_file_name}'.")
+                pass
+
+        self.log.warning(f"Failed to export file after {retry} attempts with command '{' '.join(cmd)}'")
+
+        #Throw exception after repeatedly failing
+        raise ExportError(str('Could not export file.\nCommand: "'
+            + ' '.join(cmd)
+            + '"\nThis problem might arise normally, usually when resources are taken.'))
 
     def export(self, width: int, areas: float, length: int, fps: int, threads: int, retry: int, image_files_counter: tkinter.IntVar, video_counter: tkinter.IntVar) -> bool:
         """Start exporting and return True if possible, False if exporting is already running."""
@@ -820,26 +813,26 @@ class Exporter():
         """
         while True:
             try:
-                new_file_name = exportFile(source, self.temp_folder, cmd, retry)
+                new_file_name = self.export_file(source, cmd, retry)
                 break
             except AbortException as e:
                 raise AbortException from e
             except ExportError as e:
-                #if not self.gui.askNonFatalError(str(e)):
+                if not ask_non_fatal_error(str(e)):
                     self.log.exception(f"Skipping file '{source}' after too many unsuccessful attempts.")
                     return
-                #self.log.info(f"Retrying to export '{source}' after too many unsuccessful attempts.")
+                self.log.info(f"Retrying to export '{source}' after too many unsuccessful attempts.")
             except Exception as e:
-                #if not self.gui.askNonFatalError(str(e)):
+                if not ask_non_fatal_error(str(e)):
                     self.log.exception(f"Skipping file '{source}' after unknown exception.")
                     return
-                #self.log.info(f"Retrying to export '{source}' after unknown exception.")
+                self.log.info(f"Retrying to export '{source}' after unknown exception.")
         with self.lock:
             self.image_files.append(new_file_name)
             progress_variable.set(progress_variable.get() + 1)
         return
 
-    def render_video(self, width: int, fps: int, progress_variable: tkinter.IntVar) -> None:
+    def render_video(self, width: int, fps: int, progress_variable: tkinter.IntVar, out_file: Path = None) -> None:
         """Create an mp4 video file from all the exported images.
         
         Exceptions:
@@ -848,8 +841,7 @@ class Exporter():
             Cannot open video file: raise AbortException
             Cannot add image to video: non-fatal
         """
-
-        self.out_file = str(Path(self.source_directory, f'{self.city_name.encode("ascii", "ignore").decode()}-{timestamp()}.mp4'))
+        self.out_file = out_file if out_file is not None else str(Path(self.source_directory, f'{self.city_name.encode("ascii", "ignore").decode()}-{timestamp()}.mp4'))
         while True:
             try:
                 out = cv2.VideoWriter(
@@ -862,13 +854,13 @@ class Exporter():
             except AbortException as e:
                 self.log.exception("Aborted rendering video due to AbortException.")
                 raise
-            #except Exception as e:
-                #if not self.gui.askAbortingError(str(e)):
-                #    self.log.exception("Aborted rendering video due to ubnknown Exception.")
-                #    self.gui.root.event_generate('<<Abort>>', when = "tail")
-                #    raise AbortException("Aborted due to unresolved aborting error.") from e
-                #else:
-                #    self.log.warning("Continuing rendering video after unknown Exception.")
+            except Exception as e:
+                if not ask_aborting_error(str(e)):
+                    self.log.exception("Aborted rendering video due to ubnknown Exception.")
+                    self.gui.root.event_generate('<<Abort>>', when = "tail")
+                    raise AbortException("Aborted due to unresolved aborting error.") from e
+                else:
+                    self.log.warning("Continuing rendering video after unknown Exception.")
 
         try:
             i = 0
@@ -886,16 +878,16 @@ class Exporter():
                     raise AbortException from e
                 except cv2.error as e:
                     #For some reason it still cannot catch cv2 errors
-                    #if not self.gui.askNonFatalError(str(e)):
-                    #    i += 1
-                    #    self.log.exception(f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
-                    #else:
+                    if not ask_non_fatal_error(str(e)):
+                        i += 1
+                        self.log.exception(f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
+                    else:
                         self.log.warning(f"Retrying adding image '{self.image_files[i]}' to video after cv2 Exception.")
                 except Exception as e:
-                    #if not self.gui.askNonFatalError(str(e)):
-                    #    i += 1
-                    #    self.log.warning(f"Skipping image '{self.imageFiles[i]}' after unknow Exception.")
-                    #else:
+                    if not ask_non_fatal_error(str(e)):
+                        i += 1
+                        self.log.warning(f"Skipping image '{self.imageFiles[i]}' after unknow Exception.")
+                    else:
                         self.log.warning(f"Retrying adding image '{self.image_files[i]}' to video after unknown Exception.")
         except AbortException as e:
             self.log.exception("Aborted rendering video due to AbortException.")
@@ -1056,7 +1048,6 @@ class Content_frame(ABC):
     def hide(self) -> None:
         """Hide the frame."""
         self.frame.grid_remove()
-
 
 class Main_frame(Content_frame):
     """Class for the main settings and export options frame."""
@@ -1302,7 +1293,7 @@ class Preview_frame(Content_frame):
 
         self.canvasSettingFrame = ttk.Frame(self.frame)
         self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
-        self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areas_button"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
+        self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areas_entered"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
         self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants.clickable, command = lambda _: callbacks["areas_slider"])
 
         self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
