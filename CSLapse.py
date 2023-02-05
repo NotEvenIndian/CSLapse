@@ -78,13 +78,13 @@ class ExportError(Exception):pass
 
 
 class ThreadCollector(threading.Thread):
-    """Cancel and join all running threads and futures except for threads in keepAlive.
+    """Cancel and join all running threads and futures except for threads in keep_alive.
     
     Optionally count finished threads so far in counter
     """
 
     def __init__(   self,
-                    keepAlive: List[threading.Thread],
+                    keep_alive: List[threading.Thread],
                     futures: List[concurrent.futures.Future] = None,
                     counter: tkinter.IntVar = None,
                     callback: Callable[[],None] = None
@@ -103,7 +103,7 @@ class ThreadCollector(threading.Thread):
                 future.cancel()
 
         self._garbage_threads = list(filter(
-            lambda t: t not in [*keepAlive, threading.current_thread()],
+            lambda t: t not in [*keep_alive, threading.current_thread()],
             threading.enumerate()
         ))
 
@@ -125,7 +125,7 @@ class ThreadCollector(threading.Thread):
         return
 
 
-def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortEvent: threading.Event) -> str:
+def exportFile(source_file: str, out_folder: Path, cmd: List[str], retry: int) -> str:
     """Call CSLMapView to export one image file and return outfile's name.
 
     Exceptions:
@@ -136,9 +136,9 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
     log = logging.getLogger("root")
 
     #Prepare command that calls cslmapview.exe
-    newFileName = Path(outFolder, srcFile.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
-    cmd[1] = str(srcFile)
-    cmd[3] = str(newFileName)
+    new_file_name = Path(out_folder, source_file.stem.encode("ascii", "ignore").decode()).with_suffix(".png")
+    cmd[1] = str(source_file)
+    cmd[3] = str(new_file_name)
 
     log.info(f"Export started with command '{' '.join(cmd)}'")
 
@@ -150,25 +150,25 @@ def exportFile(srcFile: str, outFolder: Path, cmd: List[str], retry: int, abortE
 
             #Return prematurely on abort
             #Needs to be after export command, otherwise won't work. Probably dead Lock.
-            if abortEvent.is_set():
+            if events.abort.is_set():
                 raise AbortException("Abort initiated on another thread.")
 
             #Ensure that the image file was successfully created. 
-            assert newFileName.exists()
+            assert new_file_name.exists()
             
-            log.info(f"Successfully exported file '{newFileName}' after {n+1} attempts.")
-            return str(newFileName)
+            log.info(f"Successfully exported file '{new_file_name}' after {n+1} attempts.")
+            return str(new_file_name)
         except AbortException as error:
-            log.exception(f"Aborted while exporting file '{newFileName}'.")
+            log.exception(f"Aborted while exporting file '{new_file_name}'.")
             raise AbortException from error
         except subprocess.CalledProcessError as e:
-            log.exception(f"Process error while exporting file '{newFileName}'.")
+            log.exception(f"Process error while exporting file '{new_file_name}'.")
             pass
         except AssertionError as e:
-            log.warning(f"File '{newFileName}' does not exist after exporting.")
+            log.warning(f"File '{new_file_name}' does not exist after exporting.")
             pass
         except Exception as e:
-            log.exception(f"Unknown exception while exporting file '{newFileName}'.")
+            log.exception(f"Unknown exception while exporting file '{new_file_name}'.")
             pass
 
     log.warning(f"Failed to export file after {retry} attempts with command '{' '.join(cmd)}'")
@@ -203,7 +203,7 @@ def roundToTwoDecimals(var: tkinter.StringVar) -> None:
     var.set(str(round(float(var.get()), 2)))
 
 
-class Events:
+class events:
     abort = threading.Event()
     preview_loaded = threading.Event()
     preview_load_error = threading.Event()
@@ -213,6 +213,39 @@ class Events:
     exporting_done = threading.Event()
     abort_finished = threading.Event()
     close = threading.Event()
+
+
+class constants:
+    abort = False
+    sampleExportWidth = 2000
+    defaultFPS = 24
+    defaultExportWidth = 2000
+    defaultThreads = 6
+    defaultRetry = 15
+    defaultAreas = 9.0
+    noFileText = "No file selected"
+    rotaOptions = ["0°", "90°", "180°", "270°"]
+    class texts:
+        openExeTitle = "Select CSLMapViewer.exe"
+        openSampleTitle = "Select a cslmap save of your city"
+        noExeMessage = "Select CSLMapviewer.exe first!"
+        noSampleMessage = "Select a city file first!"
+        invalidLengthMessage = "Invalid video length!"
+        invalidLengthMessage = "Invalid video length!"
+        invalidLengthMessage = "Invalid video length!"
+        invalidLengthMessage = "Invalid video length!"
+        invalidLengthMessage = "Invalid video length!"
+        askAbort = "Are you sure you want to abort? This cannot be undone, all progress will be lost."
+        abortAlreadyRunning = "Cannot abort export process: No export process to abort or an abort process is already running."
+        exitAfterAbortEnded = "An abort operation is running. The program will exit once it has finished."    
+    class filetypes:
+        exe = [("Executables", "*.exe"), ("All files", "*")]
+        cslmap = [("CSLMap files", ("*.cslmap", "*.cslmap.gz")), ("All files", "*")]
+    clickable = "hand2"
+    previewCursor = "fleur"
+    noPreviewImage =  resource_path("media/NOIMAGE.png")
+    sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
+
 
 
 class App():
@@ -231,57 +264,23 @@ class App():
         self.log.info("Cleanup after App done")
 
     def __init__(self):
-        self.constants = {
-            "abort":False,
-            "sampleExportWidth":2000,
-            "defaultFPS":24,
-            "defaultExportWidth":2000,
-            "defaultThreads":6,
-            "defaultRetry":15,
-            "defaultAreas":9.0,
-            "noFileText":"No file selected",
-            "rotaOptions":["0°", "90°", "180°", "270°"],
-            "texts":{
-                "openExeTitle":"Select CSLMapViewer.exe",
-                "openSampleTitle":"Select a cslmap save of your city",
-                "noExeMessage":"Select CSLMapviewer.exe first!",
-                "noSampleMessage":"Select a city file first!",
-                "invalidLengthMessage":"Invalid video length!",
-                "invalidLengthMessage":"Invalid video length!",
-                "invalidLengthMessage":"Invalid video length!",
-                "invalidLengthMessage":"Invalid video length!",
-                "invalidLengthMessage":"Invalid video length!",
-                "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost.",
-                "abortAlreadyRunning":"Cannot abort export process: No export process to abort or an abort process is already running.",
-                "exitAfterAbortEnded":"An abort operation is running. The program will exit once it has finished."
-            },
-            "filetypes": {
-                "exe":[("Executables", "*.exe"), ("All files", "*")],
-                "cslmap":[("CSLMap files", ("*.cslmap", "*.cslmap.gz")), ("All files", "*")]
-            },
-            "clickable":"hand2",
-            "previewCursor":"fleur",
-            "noPreviewImage": resource_path("media/NOIMAGE.png"),
-            "sampleCommand":["__exeFile__", "__srcFile__", "-output", "__outFile__", "-silent", "-imagewidth", str(constants["sampleExportWidth"]), "-area", str(constants["defaultAreas"])]
-        }
-        
         self.timestamp = timestamp()
         self.lock = threading.Lock()
         self.log = logging.getLogger("app")
         self.root = tkinter.Tk()
         self.root.event_add('<<Abort>>', '<Control-C>')
-        self.root.bind('<<Abort>>', lambda event: Events.abort.set())
+        self.root.bind('<<Abort>>', lambda event: events.abort.set())
         self.root.protocol("WM_DELETE_WINDOW", self.close_pressed)
         self.vars = {
-            "exe_file":tkinter.StringVar(value = self.constants["noFileText"]),
-            "sample_file":tkinter.StringVar(value = self.constants["noFileText"]),
+            "exe_file":tkinter.StringVar(value = constants.noFileText),
+            "sample_file":tkinter.StringVar(value = constants.noFileText),
             "num_of_files":tkinter.IntVar(value = 0),
-            "fps":tkinter.IntVar(value = self.constants["defaultFPS"]),
-            "width":tkinter.IntVar(value = self.constants["defaultExportWidth"]),
-            "threads":tkinter.IntVar(value = self.constants["defaultThreads"]),
-            "retry":tkinter.IntVar(value = self.constants["defaultRetry"]),
-            "rotation":tkinter.StringVar(value = self.constants["rotaOptions"][0]),
-            "areas":tkinter.StringVar(value = self.constants["defaultAreas"]),
+            "fps":tkinter.IntVar(value = constants.defaultFPS),
+            "width":tkinter.IntVar(value = constants.defaultExportWidth),
+            "threads":tkinter.IntVar(value = constants.defaultThreads),
+            "retry":tkinter.IntVar(value = constants.defaultRetry),
+            "rotation":tkinter.StringVar(value = constants.rotaOptions[0]),
+            "areas":tkinter.StringVar(value = constants.defaultAreas),
             "video_length":tkinter.IntVar(value = 0),
             "exporting_done":tkinter.IntVar(value = 0),
             "rendering_done":tkinter.IntVar(value = 0),
@@ -290,7 +289,7 @@ class App():
         }
         callbacks = self.register_callbacks()
 
-        self.exporter = Exporter(self.lock, self.constants)
+        self.exporter = Exporter(self.lock)
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
         
@@ -373,49 +372,49 @@ class App():
 
     def _checkThreadEvents(self) -> None:
         """Check if the threading events are set, repeat after 100 ms."""
-        if Events.preview_loaded.is_set():
-            Events.preview_loaded.clear()
+        if events.preview_loaded.is_set():
+            events.preview_loaded.clear()
             self.preview.justExported(self.vars["preview_source"], int(self.vars["width"].get()), float(self.vars["areas"].get()))
             self.window.set_state("preview_loaded")
-        if Events.preview_load_error.is_set():
-            Events.preview_load_error.clear()
+        if events.preview_load_error.is_set():
+            events.preview_load_error.clear()
             self.window.set_state("preview_load_error")
-        if Events.abort.is_set():
+        if events.abort.is_set():
             if not self.exporter.is_aborting:
                 self.abort()
-        if Events.threads_collected.is_set():
-            Events.threads_collected.clear()
+        if events.threads_collected.is_set():
+            events.threads_collected.clear()
             self.window.set_state("defaultState")
-        if Events.export_started.is_set():
-            Events.export_started.clear()
+        if events.export_started.is_set():
+            events.export_started.clear()
             self.window.set_export_limit(int(self.vars["video_length"].get()))
             self.window.set_state("start_export")
-        if Events.image_files_exported.is_set():
-            Events.image_files_exported.clear()
+        if events.image_files_exported.is_set():
+            events.image_files_exported.clear()
             self.window.set_video_limit(self.exporter.get_num_of_exported_files())
             self.window.set_state("start_render")
-        if Events.exporting_done.is_set():
-            Events.exporting_done.clear()
+        if events.exporting_done.is_set():
+            events.exporting_done.clear()
             self.cleanup_after_success()
             self.window.set_state("render_done")
             #TODO: FIX completion message
             self.showInfo(f"See your timelapse at ?????", "Video completed")
-        if Events.abort_finished.is_set():
-            Events.abort_finished.clear()
+        if events.abort_finished.is_set():
+            events.abort_finished.clear()
             self.cleanup_after_abort()
         self.root.after(100, self._checkThreadEvents)
 
     def refresh_preview(self) -> None:
         """Export the preview CSLMap file with current settings."""
-        if self.vars["exe_file"].get() == self.constants["noFileText"]:
+        if self.vars["exe_file"].get() == constants.noFileText:
             return
-        if self.vars["sample_file"].get() == self.constants["noFileText"]:
+        if self.vars["sample_file"].get() == constants.noFileText:
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
             return
         self.window.set_state("preview_loading")
-        cmd = self.constants["sampleCommand"][:]
+        cmd = constants.sampleCommand[:]
         cmd[6] = str(self.vars["width"].get())
         cmd[8] = str(self.vars["areas"].get())
 
@@ -447,24 +446,23 @@ class App():
                     sample,
                     self.exporter.temp_folder, 
                     command,
-                    retry,
-                    Events.abort
+                    retry
                     ) 
                 with self.lock:
                     self.vars["preview_source"] = Image.open(exported)
-                Events.preview_loaded.set()
+                events.preview_loaded.set()
                 return
             except AbortException:
-                Events.preview_load_error.set()
+                events.preview_load_error.set()
                 return
             except ExportError as e:
                 if not self.askNonFatalError(str(e)):
-                    Events.preview_load_error.set()
+                    events.preview_load_error.set()
                     self.log.exception(f"Returning after failed export of sample file '{sample}'")
                     return
             except Exception as e:
                 if not self.askNonFatalError(str(e)):
-                    Events.preview_load_error.set()
+                    events.preview_load_error.set()
                     self.log.exception(f"Returning after failed export due to unnown exception of sample file '{sample}'")
                     return
 
@@ -476,7 +474,7 @@ class App():
 
     def select_sample(self) -> None:
         """Select sample file from dialog and set variables accordingly."""
-        selected_file = self.open_file(self.constants["texts"]["openSampleTitle"], self.constants["filetypes"]["cslmap"])
+        selected_file = self.open_file(constants.texts.openSampleTitle, constants.filetypes.cslmap)
         if selected_file == self.vars["sample_file"].get():
             return
         elif selected_file != "":
@@ -490,18 +488,18 @@ class App():
                 self.vars["video_length"].set(min(self.vars["video_length"].get(), num_of_files))
             self.refresh_preview()
         else:
-            self.vars["sample_file"].set(self.constants["noFileText"])
+            self.vars["sample_file"].set(constants.noFileText)
 
     def select_exe(self) -> None:
         """Select SCLMapViewer.exe from dialog and set variables accordingly."""
-        selected_file = self.open_file(self.constants["texts"]["openSampleTitle"], self.constants["filetypes"]["exe"])
+        selected_file = self.open_file(constants.texts.openSampleTitle, constants.filetypes.exe)
         if selected_file != "":
             self.vars["exe_file"].set(selected_file)
-            self.constants["sampleCommand"][0] = selected_file
+            constants.sampleCommand[0] = selected_file
             self.exporter.set_exefile(selected_file)
             self.refresh_preview()
         else:
-            self.vars["exe_file"].set(self.constants["noFileText"])
+            self.vars["exe_file"].set(constants.noFileText)
 
     def abort(self, event: tkinter.Event = None) -> None:
         """Stop currently running export process.
@@ -512,8 +510,7 @@ class App():
         Impossible to recover state afterwards.
         """
         if not self.exporter.can_abort():
-            self.showWarning(constants["texts"]["abortAlreadyRunning"])
-            #self.abortEvent.clear()
+            self.showWarning(constants.texts.abortAlreadyRunning)
             return
 
         if threading.current_thread() is not threading.main_thread():
@@ -525,7 +522,7 @@ class App():
             self.log.info("Abort procedure started on main thread.")
 
             self.vars["thread_collecting"].set(0)
-            collector = ThreadCollector([threading.current_thread()], self.exporter.get_futures(), counter = self.vars["thread_collecting"], callback=Events.abort_finished.set)
+            collector = ThreadCollector([threading.current_thread()], self.exporter.get_futures(), counter = self.vars["thread_collecting"], callback=events.abort_finished.set)
             self.window.progressPopup(self.vars["thread_collecting"], collector.total())
             collector.start()
 
@@ -535,11 +532,11 @@ class App():
 
     def cleanup_after_abort(self) -> None:
         """Clean up variables and environment after aborted exporting."""
-        Events.abort.clear()
+        events.abort.clear()
         self.exporter.cleanup()
         self.log.info("Successful cleanup after aborted export.")
         self.window.set_state("after_abort")
-        if Events.close.is_set():
+        if events.close.is_set():
             self.root.destroy()
             self.log.info("Exiting after aborted export.")
             
@@ -568,11 +565,11 @@ class App():
             return False
 
     def refresh_pressed(self) -> None:
-        if self.vars["exe_file"].get() == self.constants["noFileText"]:
-            self.showWarning(title = "Warning", message = self.constants["texts"]["noExeMessage"])
+        if self.vars["exe_file"].get() == constants.noFileText:
+            self.showWarning(title = "Warning", message = constants.texts.noExeMessage)
             return
-        if self.vars["sample_file"].get() == self.constants["noFileText"]:
-            self.showWarning(title = "Warning", message = self.constants["texts"]["noSampleMessage"])
+        if self.vars["sample_file"].get() == constants.noFileText:
+            self.showWarning(title = "Warning", message = constants.texts.noSampleMessage)
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
@@ -584,20 +581,20 @@ class App():
         """Check if all conditions are satified and start exporting if yes. Show warning if not."""
         self.log.info(f'Submit button pressed with entry data:\nexefile={self.vars["exe_file"].get()}\nfps={self.vars["fps"].get()}\nwidth={self.vars["width"].get()}\nvideolenght={self.vars["video_length"].get()}\nthreads={self.vars["threads"].get()}\nretry={self.vars["retry"].get()}')
         try:
-            if self.vars["exe_file"].get() == self.constants["noFileText"]:
-                self.showWarning(self.constants["texts"]["noExeMessage"])
-            elif self.vars["sample_file"].get() == self.constants["noFileText"]:
-                self.showWarning(self.constants["texts"]["noSampleMessage"])
+            if self.vars["exe_file"].get() == constants.noFileText:
+                self.showWarning(constants.texts.noExeMessage)
+            elif self.vars["sample_file"].get() == constants.noFileText:
+                self.showWarning(constants.texts.noSampleMessage)
             elif not self.vars["fps"].get() > 0:
-                self.showWarning(self.constants["texts"]["invalidFPSMessage"])
+                self.showWarning(constants.texts.invalidFPSMessage)
             elif not self.vars["width"].get() > 0:
-                self.showWarning(self.constants["texts"]["invalidWidthMessage"])
+                self.showWarning(constants.texts.invalidWidthMessage)
             elif not self.vars["video_length"].get() > 0:
-                self.showWarning(self.constants["texts"]["invalidLengthMessage"])
+                self.showWarning(constants.texts.invalidLengthMessage)
             elif not self.vars["threads"].get() > 0:
-                self.showWarning(self.constants["texts"]["invalidThreadsMessage"])
+                self.showWarning(constants.texts.invalidThreadsMessage)
             elif not self.vars["retry"].get() > -1:
-                self.showWarning(self.constants["texts"]["invalidRetryMessage"])
+                self.showWarning(constants.texts.invalidRetryMessage)
             else:
                 if not self.exporter.export(
                     self.vars["width"].get(),
@@ -616,7 +613,7 @@ class App():
 
     def abort_pressed(self) -> None:
         """Ask user if really wants to abort. Generate abort tkinter event if yes."""
-        if messagebox.askyesno(title = "Abort action?", message = constants["texts"]["askAbort"]):
+        if messagebox.askyesno(title = "Abort action?", message = constants.texts.askAbort):
             self.log.info("Abort initiated by abort button.")
             self.root.event_generate('<<Abort>>', when = "tail")
 
@@ -629,22 +626,22 @@ class App():
     def close_pressed(self) -> None:
         """Aks user if really wnats to quit. If yes, initiate abort and exit afterwards"""
         if self.exporter.is_running:
-            if messagebox.askyesno(title = "Are you sure you want to exit?", message = self.constants["texts"]["askAbort"]):
-                Events.close.set()
+            if messagebox.askyesno(title = "Are you sure you want to exit?", message = constants.texts.askAbort):
+                events.close.set()
                 self.root.event_generate('<<Abort>>', when = "tail")
                 self.log.info("Abort process initiated by close button.")
         elif self.exporter.is_aborting:
-            Events.close.set()
-            self.showWarning(self.constants["texts"]["exitAfterAbortEnded"])
+            events.close.set()
+            self.showWarning(constants.texts.exitAfterAbortEnded)
         else:
             self.log.info("Exiting due to close button pressed.")
-            Events.abort.set()
-            Events.close.set()
+            events.abort.set()
+            events.close.set()
             self.root.destroy()
 
 
 class Exporter():
-    def __init__(self, lock: threading.Lock, constants: dict):
+    def __init__(self, lock: threading.Lock):
         self.log = logging.getLogger("exporter")
         self.lock = lock
         self.source_directory = None # Path type, the directory where cslmap files are loaded from
@@ -656,8 +653,6 @@ class Exporter():
         self.is_running = False # If currently there is exporting going on
         self.is_aborting = False # If an abort pre=ocess is in progress
         self.out_file = "" # Name of output file
-
-        self.filetypes = constants["filetypes"]
 
     def get_file(self, n: int) -> str:
         """
@@ -755,7 +750,7 @@ class Exporter():
         self.log.info(f"Exporting process initiated.")
         self.is_running = True
         self.is_aborting = False
-        Events.abort.clear()
+        events.abort.clear()
         self.clear_temp_folder()
         self.image_files = []
         self.futures = []
@@ -770,17 +765,17 @@ class Exporter():
             AbortException: return
         """
         try:
-            Events.export_started.set()
+            events.export_started.set()
             self.log.info("Exporting image files started.")
             self.export_image_files(width, areas, length, threads, retry, image_files_var)
             self.log.info("Exporting image files finished.")
-            Events.image_files_exported.set()
+            events.image_files_exported.set()
             self.log.info("Rendering video started.")
             self.render_video(width, fps, video_var)
             self.log.info("Rendering video finished.")
-            Events.exporting_done.set()
+            events.exporting_done.set()
         except AbortException as e:
-            Events.abort.set()
+            events.abort.set()
             self.log.exception("Aborting export process due to AbortException")
             raise
 
@@ -792,7 +787,7 @@ class Exporter():
         """     
         cmd = [
             self.exefile,
-            "__srcFile__",
+            "__source_file__",
             "-output",
             "__outFile__",
             "-silent",
@@ -807,7 +802,7 @@ class Exporter():
                 self.futures.append(
                     executor.submit(self.export_image, self.raw_files[i], cmd[:], retry, progress_variable)
                 )
-        if Events.abort.is_set():
+        if events.abort.is_set():
             raise AbortException("Abort initiated on another thread.")
 
         #Sort array as the order might have changed during threading
@@ -825,23 +820,22 @@ class Exporter():
         """
         while True:
             try:
-                new_file_name = exportFile(source, self.temp_folder, cmd, retry, Events.abort)
+                new_file_name = exportFile(source, self.temp_folder, cmd, retry)
                 break
             except AbortException as e:
                 raise AbortException from e
             except ExportError as e:
                 #if not self.gui.askNonFatalError(str(e)):
-                    self.log.exception(f"Skipping file '{srcFile}' after too many unsuccessful attempts.")
+                    self.log.exception(f"Skipping file '{source}' after too many unsuccessful attempts.")
                     return
-                #self.log.info(f"Retrying to export '{srcFile}' after too many unsuccessful attempts.")
+                #self.log.info(f"Retrying to export '{source}' after too many unsuccessful attempts.")
             except Exception as e:
                 #if not self.gui.askNonFatalError(str(e)):
-                    self.log.exception(f"Skipping file '{srcFile}' after unknown exception.")
+                    self.log.exception(f"Skipping file '{source}' after unknown exception.")
                     return
-                #self.log.info(f"Retrying to export '{srcFile}' after unknown exception.")
+                #self.log.info(f"Retrying to export '{source}' after unknown exception.")
         with self.lock:
             self.image_files.append(new_file_name)
-            progress_callback()
             progress_variable.set(progress_variable.get() + 1)
         return
 
@@ -879,7 +873,7 @@ class Exporter():
         try:
             i = 0
             while i < len(self.image_files):
-                if Events.abort.is_set():
+                if events.abort.is_set():
                     raise AbortException("Abort initiated on another thread.")
                 try:
                     img = cv2.imread(self.image_files[i])
@@ -983,7 +977,7 @@ class CSLapse_window():
             for p in self.popups:
                 p.destroy()
         elif state == "aborting":
-            self.root.configure(cursor = constants["fleur"])
+            self.root.configure(cursor = constants.preview_cursor)
         elif state == "after_abort":
             for p in self.popups:
                 p.destroy()
@@ -1070,11 +1064,11 @@ class Main_frame(Content_frame):
     def _populate(self, vars: dict, callbacks: dict) -> None:
         self.fileSelectionBox = ttk.Labelframe(self.frame, text = "Files")
         self.exeSelectLabel = ttk.Label(self.fileSelectionBox, text = "Path to CSLMapViewer.exe")
-        self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exe_file"], cursor = constants["clickable"])
-        self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["select_exe"])
+        self.exePath = ttk.Entry(self.fileSelectionBox, width = 40, state = ["readonly"], textvariable = vars["exe_file"], cursor = constants.clickable)
+        self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants.clickable, command = callbacks["select_exe"])
         self.sampleSelectLabel = ttk.Label(self.fileSelectionBox, text = "Select a cslmap file of your city")
-        self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sample_file"], cursor = constants["clickable"])
-        self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants["clickable"], command = callbacks["select_sample"])
+        self.samplePath = ttk.Entry(self.fileSelectionBox, state = ["readonly"], textvariable = vars["sample_file"], cursor = constants.clickable)
+        self.sampleSelectBtn = ttk.Button(self.fileSelectionBox, text = "Select file", cursor = constants.clickable, command = callbacks["select_sample"])
         self.filesLoading = ttk.Progressbar(self.fileSelectionBox)
         self.filesNumLabel = ttk.Label(self.fileSelectionBox, textvariable = vars["num_of_files"])
         self.filesLoadedLabel = ttk.Label(self.fileSelectionBox, text = "files found")
@@ -1107,8 +1101,8 @@ class Main_frame(Content_frame):
         self.renderingTotalLabel = ttk.Label(self.progressFrame)
         self.renderingProgress = ttk.Progressbar(self.progressFrame, orient = "horizontal", mode = "determinate", variable = vars["rendering_done"])
 
-        self.submitBtn = ttk.Button(self.frame, text = "Export", cursor = constants["clickable"], command = callbacks["submit"])
-        self.abortBtn = ttk.Button(self.frame, text = "Abort", cursor = constants["clickable"], command = callbacks["abort"])
+        self.submitBtn = ttk.Button(self.frame, text = "Export", cursor = constants.clickable, command = callbacks["submit"])
+        self.abortBtn = ttk.Button(self.frame, text = "Abort", cursor = constants.clickable, command = callbacks["abort"])
 
     def _grid(self) -> None:
         self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
@@ -1267,7 +1261,7 @@ class Main_frame(Content_frame):
                 self.retryEntry,
                 self.abortBtn,
             )
-            #self.root.configure(cursor = constants["previewCursor"])
+            #self.root.configure(cursor = constants.previewCursor)
         elif state == "after_abort":
             self._disable_widgets(self.abortBtn)
             self._enable_widgets(
@@ -1299,23 +1293,23 @@ class Preview_frame(Content_frame):
     def _populate(self, vars: dict, callbacks: dict) -> None:
         self.canvasFrame = ttk.Frame(self.frame, relief = tkinter.SUNKEN, borderwidth = 2)
         self.preview = Preview(self.frame)
-        self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text = "Refresh", cursor = constants["clickable"],
+        self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text = "Refresh", cursor = constants.clickable,
             command = lambda:callbacks["refresh_preview"]())
-        self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text = "Fit", cursor = constants["clickable"],
+        self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text = "Fit", cursor = constants.clickable,
             command = self.preview.fitToCanvas)
-        self.originalSizeBtn = ttk.Button(self.preview.canvas, text = "100%", cursor = constants["clickable"],
+        self.originalSizeBtn = ttk.Button(self.preview.canvas, text = "100%", cursor = constants.clickable,
             command = self.preview.scaleToOriginal)
 
         self.canvasSettingFrame = ttk.Frame(self.frame)
         self.zoomLabel = ttk.Label(self.canvasSettingFrame, text = "Areas:")
         self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width = 5, textvariable = vars["areas"], from_ = 0.1, increment = 0.1, to = 9.0, wrap = False, validatecommand = (callbacks["areas_button"], "%d", "%P"), validate = "all", command = lambda: self.preview.update_printarea(float(vars["areas"].get())))
-        self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants["clickable"], command = lambda _: callbacks["areas_slider"])
+        self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient = tkinter.HORIZONTAL, from_ = 0.1, to = 9.0, variable = vars["areas"], cursor = constants.clickable, command = lambda _: callbacks["areas_slider"])
 
         self.rotationLabel = ttk.Label(self.canvasSettingFrame, text = "Rotation:")
-        self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants["clickable"])
+        self.rotationSelection = ttk.Menubutton(self.canvasSettingFrame, textvariable = vars["rotation"], cursor = constants.clickable)
         self.rotationSelection.menu = tkinter.Menu(self.rotationSelection, tearoff = 0)
         self.rotationSelection["menu"] = self.rotationSelection.menu
-        for option in constants["rotaOptions"]:
+        for option in constants.rotaOptions:
             self.rotationSelection.menu.add_radiobutton(label = option, variable = vars["rotation"])
 
     def _grid(self) -> None:
@@ -1400,7 +1394,7 @@ class Preview_frame(Content_frame):
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
-            self.preview.canvas.configure(cursor = constants["previewCursor"])
+            self.preview.canvas.configure(cursor = constants.previewCursor)
         elif state == "preview_load_error":
             self._enable_widgets(self.refreshPreviewBtn)
             self._show_widgets(self.refreshPreviewBtn)
@@ -1421,7 +1415,7 @@ class Preview_frame(Content_frame):
                 self.originalSizeBtn,
                 self.refreshPreviewBtn
             )
-            self.preview.canvas.configure(cursor = constants["previewCursor"])
+            self.preview.canvas.configure(cursor = constants.previewCursor)
 
     def get_preview(self) -> Preview:
         return self.preview
@@ -1528,7 +1522,7 @@ class Preview():
         self.imageY = 0  # Y Coordinate on canvas of pixel in top left of image
         self.scaleFactor = 1  # Conversion factor: canvas pixels / original image pixels
 
-        self.placeholderImage = ImageTk.PhotoImage(Image.open(constants["noPreviewImage"]))
+        self.placeholderImage = ImageTk.PhotoImage(Image.open(constants.noPreviewImage))
         self.canvas.create_image(0, 0, image = self.placeholderImage, tags = "placeholder")
 
         self.printarea = Preview.Printarea(self.canvas)
@@ -1674,33 +1668,4 @@ def new_main() -> None:
 if __name__ == "__main__":
     logging.config.dictConfig(get_logger_config_dict())
     currentDirectory = Path(__file__).parent.resolve() # current directory
-    constants = {
-        "abort":False,
-        "sampleExportWidth":2000,
-        "defaultFPS":24,
-        "defaultExportWidth":2000,
-        "defaultThreads":6,
-        "defaultRetry":15,
-        "defaultAreas":9.0,
-        "noFileText":"No file selected",
-        "rotaOptions":["0°", "90°", "180°", "270°"],
-        "texts":{
-            "openExeTitle":"Select CSLMapViewer.exe",
-            "openSampleTitle":"Select a cslmap save of your city",
-            "noExeMessage":"Select CSLMapviewer.exe first!",
-            "noSampleMessage":"Select a city file first!",
-            "invalidLengthMessage":"Invalid video length!",
-            "invalidLengthMessage":"Invalid video length!",
-            "invalidLengthMessage":"Invalid video length!",
-            "invalidLengthMessage":"Invalid video length!",
-            "invalidLengthMessage":"Invalid video length!",
-            "askAbort":"Are you sure you want to abort? This cannot be undone, all progress will be lost.",
-            "abortAlreadyRunning":"Cannot abort export process: No export process to abort or an abort process is already running.",
-            "exitAfterAbortEnded":"An abort operation is running. The program will exit once it has finished."
-            
-        },
-        "clickable":"hand2",
-        "previewCursor":"fleur",
-        "noPreviewImage": resource_path("media/NOIMAGE.png")
-    }
     new_main()
