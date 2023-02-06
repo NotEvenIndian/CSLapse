@@ -1507,8 +1507,21 @@ class Targets_frame(Content_frame):
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the targets frame."""
+        self.group1_frame = ttk.Labelframe(self.frame, text = "Elements")
         for setting in constants.settings.drawing_target.group1:
-            row = ttk.Frame(self.frame)
+            row = ttk.Frame(self.group1_frame)
+            ttk.Checkbutton(row)
+            ttk.Label(row, text = setting)
+
+        self.group2_frame = ttk.Labelframe(self.frame, text = "Rail lines")
+        for setting in constants.settings.drawing_target.group2:
+            row = ttk.Frame(self.group2_frame)
+            ttk.Checkbutton(row)
+            ttk.Label(row, text = setting)
+            
+        self.group3_frame = ttk.Labelframe(self.frame, text = "Overlay")
+        for setting in constants.settings.drawing_target.group3:
+            row = ttk.Frame(self.group3_frame)
             ttk.Checkbutton(row)
             ttk.Label(row, text = setting)
 
@@ -1516,10 +1529,14 @@ class Targets_frame(Content_frame):
         """Grid the widgets contained in the targets frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-        for i, row in zip(range(len(self.frame.winfo_children())), self.frame.winfo_children()):
-            row.grid(row = i, column = 0)
-            for j, widget in zip(range(len(row.winfo_children())), row.winfo_children()):
-                widget.grid(row = 0, column = j, sticky = tkinter.W)
+        self.group1_frame.grid(row = 0, column = 0, sticky = tkinter.EW)
+        self.group2_frame.grid(row = 1, column = 0, sticky = tkinter.EW)
+        self.group3_frame.grid(row = 2, column = 0, sticky = tkinter.EW)
+        for subframe in self.frame.winfo_children():
+            for i, row in zip(range(len(subframe.winfo_children())), subframe.winfo_children()):
+                row.grid(row = i, column = 0, sticky = tkinter.W)
+                for j, widget in zip(range(len(row.winfo_children())), row.winfo_children()):
+                    widget.grid(row = 0, column = j, sticky = tkinter.W)
 
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the targets frame."""
