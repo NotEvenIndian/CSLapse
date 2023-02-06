@@ -264,6 +264,14 @@ class constants:
     previewCursor = "fleur"
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
+    class settings:
+        class drawing_target:
+            group1 = ["Terrain", "Forest", "Buildings", "Roads", "Railways"]
+            group2 = ["Train", "Tram", "Metro", "Monorail", "Cable car"]
+            group3 = ["Grid", "Districts", "Building names", "Map symbols", "Road names", "Park names"]
+        class public_transport:
+            vehicles = ["Bus", "Tram", "Metro", "Train", "Monorail", "Blimp", "Ferry"]
+            misc = ["Merge bus and tram stops nearby", "Merge train and metro stations nearby", "Auto coloring", "Widen line if paths share same segment", "Detect end loops", "Mark one way routes", "Merged route numberings"]
 
 
 
@@ -928,7 +936,6 @@ class Exporter():
         self.log.info("Successful cleanup after export or abort.")
 
 
-
 class CSLapse_window():
     
     def __init__(self, root: tkinter.Toplevel, vars: dict, callbacks: dict):
@@ -945,10 +952,12 @@ class CSLapse_window():
         self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
+        self.targets_frame = Targets_frame(self.root, vars, callbacks)
         return [
             self.pages_frame,
             self.main_frame,
-            self.preview_frame
+            self.preview_frame,
+            self.targets_frame
         ]
 
     def _configure_window(self) -> None:
@@ -1494,8 +1503,35 @@ class Pages_frame(Content_frame):
                 w.configure(background = constants.inactive_page_color)
             self.frame.winfo_children()[constants.pages.index(state)].configure(background = constants.active_page_color)
 
+class Targets_frame(Content_frame):
 
+    def _populate(self, vars: dict, callbacks: dict) -> None:
+        """Create the widgets contained in the targets frame."""
+        for setting in constants.settings.drawing_target.group1:
+            row = ttk.Frame(self.frame)
+            ttk.Checkbutton(row)
+            ttk.Label(row, text = setting)
 
+    def _grid(self) -> None:
+        """Grid the widgets contained in the targets frame."""
+        self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
+
+        for i, row in zip(range(len(self.frame.winfo_children())), self.frame.winfo_children()):
+            row.grid(row = i, column = 0)
+            for j, widget in zip(range(len(row.winfo_children())), row.winfo_children()):
+                widget.grid(row = 0, column = j, sticky = tkinter.W)
+
+    def _configure(self) -> None:
+        """Set configuration optionis for the widgets in the targets frame."""
+        self.hide()
+        self.frame.columnconfigure(0, weight = 1)
+
+    def set_state(self, state: str) -> None:
+        """Set options for the widgets in the targets frame."""
+        if state == "targets_page":
+            self.show()
+        elif state in constants.pages:
+            self.hide()
 
 class Preview():
     """ Object that handles the preview functionaltiy in the GUI"""
