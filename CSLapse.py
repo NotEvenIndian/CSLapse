@@ -953,11 +953,13 @@ class CSLapse_window():
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
         self.targets_frame = Targets_frame(self.root, vars, callbacks)
+        self.public_transport_frame = Public_transport_frame(self.root, vars, callbacks)
         return [
             self.pages_frame,
             self.main_frame,
             self.preview_frame,
-            self.targets_frame
+            self.targets_frame,
+            self.public_transport_frame
         ]
 
     def _configure_window(self) -> None:
@@ -1533,9 +1535,11 @@ class Targets_frame(Content_frame):
         self.group2_frame.grid(row = 1, column = 0, sticky = tkinter.EW)
         self.group3_frame.grid(row = 2, column = 0, sticky = tkinter.EW)
         for subframe in self.frame.winfo_children():
-            for i, row in zip(range(len(subframe.winfo_children())), subframe.winfo_children()):
+            rows = subframe.winfo_children()
+            for i, row in zip(range(len(rows)), rows):
                 row.grid(row = i, column = 0, sticky = tkinter.W)
-                for j, widget in zip(range(len(row.winfo_children())), row.winfo_children()):
+                widgets = row.winfo_children()
+                for j, widget in zip(range(len(widgets)), widgets):
                     widget.grid(row = 0, column = j, sticky = tkinter.W)
 
     def _configure(self) -> None:
@@ -1549,6 +1553,55 @@ class Targets_frame(Content_frame):
             self.show()
         elif state in constants.pages:
             self.hide()
+
+class Public_transport_frame(Content_frame):
+
+    def _populate(self, vars: dict, callbacks: dict) -> None:
+        """Create the widgets contained in the targets frame."""
+        self.lines_frame = ttk.Labelframe(self.frame, text = "Lines and stops")
+        for vehicle in constants.settings.public_transport.vehicles:
+            ttk.Checkbutton(self.lines_frame)
+            ttk.Label(self.lines_frame, text = f"{vehicle} stops")
+            ttk.Checkbutton(self.lines_frame)
+            ttk.Label(self.lines_frame, text = f"{vehicle} lines")
+
+        self.misc_frame = ttk.Labelframe(self.frame, text = "Misc")
+        for setting in constants.settings.public_transport.misc:
+            row = ttk.Frame(self.misc_frame)
+            ttk.Checkbutton(row)
+            ttk.Label(row, text = setting)
+
+
+    def _grid(self) -> None:
+        """Grid the widgets contained in the targets frame."""
+        self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
+
+        self.lines_frame.grid(row = 0, column = 0, sticky = tkinter.EW)
+        self.misc_frame.grid(row = 1, column = 0, sticky = tkinter.EW)
+
+        widgets = self.lines_frame.winfo_children()
+        for i, widget in zip(range(len(widgets)), widgets):
+            widget.grid(row = i//4, column = i%4, sticky = tkinter.W)
+
+        rows = self.misc_frame.winfo_children()
+        for i, row in zip(range(len(rows)), rows):
+            row.grid(row = i, column = 0, sticky = tkinter.W)
+            widgets = row.winfo_children()
+            for j, widget in zip(range(len(widgets)), widgets):
+                widget.grid(row = 0, column = j, sticky = tkinter.W)
+
+    def _configure(self) -> None:
+        """Set configuration optionis for the widgets in the public transport frame."""
+        self.hide()
+        self.frame.columnconfigure(0, weight = 1)
+
+    def set_state(self, state: str) -> None:
+        """Set options for the widgets in the public transport frame."""
+        if state == "public_transport_page":
+            self.show()
+        elif state in constants.pages:
+            self.hide()
+
 
 class Preview():
     """ Object that handles the preview functionaltiy in the GUI"""
