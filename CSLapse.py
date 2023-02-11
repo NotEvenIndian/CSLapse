@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import threading
 import concurrent.futures
-from typing import List, Tuple, Any, Callable
+from typing import List, Tuple, Any, Callable, NamedTuple
 from shutil import rmtree
 
 import logging
@@ -23,10 +23,15 @@ from PIL import ImageTk, Image
 
 from abc import ABC, abstractmethod
 
+import xml
+
 # Suggestions for any sort of improvement are welcome.
 
 class AbortException(Exception):pass
 class ExportError(Exception):pass
+class Setting_entry(NamedTuple(str)):
+    text: str
+    xmltag: str
 
 def get_logger_config_dict() -> dict:
     """Return the logger configuration dictionary."""
@@ -62,6 +67,10 @@ def get_logger_config_dict() -> dict:
                 "handlers": ["logfile"]
             },
             "window": {
+                "level": logging.INFO,
+                "handlers": ["logfile"]
+            },
+            "xmlparser": {
                 "level": logging.INFO,
                 "handlers": ["logfile"]
             }
@@ -272,7 +281,71 @@ class constants:
         class public_transport:
             vehicles = ["Bus", "Tram", "Metro", "Train", "Monorail", "Blimp", "Ferry"]
             misc = ["Merge bus and tram stops nearby", "Merge train and metro stations nearby", "Auto coloring", "Widen line if paths share same segment", "Detect end loops", "Mark one way routes", "Merged route numberings"]
+    xmlsettings = [
+        Setting_entry("Terrain", "RenderTerrain"),
+        Setting_entry("Forest", "RenderTerrain"),
+        Setting_entry("Buildings", "RenderTerrain"),
+        Setting_entry("Roads", "RenderTerrain"),
+        Setting_entry("Railways", "RenderTerrain"),
+        Setting_entry("Train", "RenderTerrain"),
+        Setting_entry("Tram", "RenderTerrain"),
+        Setting_entry("Metro", "RenderTerrain"),
+        Setting_entry("Monorail", "RenderTerrain"),
+        Setting_entry("Cable car", "RenderTerrain"),
+        Setting_entry("Grid", "RenderTerrain"),
+        Setting_entry("Districts", "RenderTerrain"),
+        Setting_entry("Building names", "RenderTerrain"),
+        Setting_entry("Map symbols", "RenderTerrain"),
+        Setting_entry("Road names", "RenderTerrain"),
+        Setting_entry("Park names", "RenderTerrain")
+    ]
 
+
+class Settings():
+    """Class handling the external xml settings file."""
+
+    def __init__(file: Path = None):
+        self.file = Path
+        self.log = logging.getLogger("xmlparser")
+
+        self.tree = None
+        self.root = None
+
+        if file is not None:
+            self.tree = xml.etree.Elementtree.parse(self.file)
+            self.root = self.tree.getroot()
+            self.log.info(f"Successfully connected settings file {self.file}")
+        else:
+            self.log.info("Initiated settings object with no file")
+
+    def _store_important_settings():
+        """Store all xml elements relevant to the application in a way that they are accessible easily."""
+        self.settings = {
+            self.root.find(xml_tag)
+        }
+
+    def set_file(file: Path, save_changes: bool = False):
+        """Change the used file to file. If save_changes is True, write the changes to the old file before closing."""
+        if save_changes:
+            self.write()
+        self.file = Path
+        self.tree = xml.etree.Elementtree.parse(self.file)
+        self.root = self.tree.getroot()
+        self.log.info(f"Successfully connected settings file {self.file}")
+
+    def write():
+        """Write all local changes to the source file."""
+        if self.tree is not None:
+            self.tree.write(self.file)
+            self.log.info("Changes written to file")
+        else:
+            self.log.warning("Trying to write with no file")
+
+    def change(setting_name: str, value: Any):
+        """Set the setting given to value locally, but do ot write yet."""
+
+    def get(setting_name: str):
+        """Return the value associated with setting_name."""
 
 
 class App():
@@ -608,6 +681,7 @@ class App():
 
     def set_page(self, page_num: int) -> None:
         self.window.set_state(constants.pages[page_num])
+
 
 class Exporter():
     """Class responsible for exporting images and assembling the video from them."""
