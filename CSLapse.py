@@ -29,9 +29,9 @@ import xml
 
 class AbortException(Exception):pass
 class ExportError(Exception):pass
-class Setting_entry(NamedTuple(str)):
+class Xml_setting(NamedTuple):
     text: str
-    xmltag: str
+    xmlpath: str
 
 def get_logger_config_dict() -> dict:
     """Return the logger configuration dictionary."""
@@ -274,31 +274,59 @@ class constants:
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
     class settings:
-        class drawing_target:
-            group1 = ["Terrain", "Forest", "Buildings", "Roads", "Railways"]
-            group2 = ["Train", "Tram", "Metro", "Monorail", "Cable car"]
-            group3 = ["Grid", "Districts", "Building names", "Map symbols", "Road names", "Park names"]
-        class public_transport:
-            vehicles = ["Bus", "Tram", "Metro", "Train", "Monorail", "Blimp", "Ferry"]
-            misc = ["Merge bus and tram stops nearby", "Merge train and metro stations nearby", "Auto coloring", "Widen line if paths share same segment", "Detect end loops", "Mark one way routes", "Merged route numberings"]
-    xmlsettings = [
-        Setting_entry("Terrain", "RenderTerrain"),
-        Setting_entry("Forest", "RenderTerrain"),
-        Setting_entry("Buildings", "RenderTerrain"),
-        Setting_entry("Roads", "RenderTerrain"),
-        Setting_entry("Railways", "RenderTerrain"),
-        Setting_entry("Train", "RenderTerrain"),
-        Setting_entry("Tram", "RenderTerrain"),
-        Setting_entry("Metro", "RenderTerrain"),
-        Setting_entry("Monorail", "RenderTerrain"),
-        Setting_entry("Cable car", "RenderTerrain"),
-        Setting_entry("Grid", "RenderTerrain"),
-        Setting_entry("Districts", "RenderTerrain"),
-        Setting_entry("Building names", "RenderTerrain"),
-        Setting_entry("Map symbols", "RenderTerrain"),
-        Setting_entry("Road names", "RenderTerrain"),
-        Setting_entry("Park names", "RenderTerrain")
-    ]
+        drawing_target = {
+            "Elements": {
+                "Terrain": Xml_setting("Terrain", "./RenderTerrain"),
+                "Forest": Xml_setting("Forest", "./RenderForest"),
+                "Buildings": Xml_setting("Buildings", "./RenderBuilding"),
+                "Roads": Xml_setting("Roads", "./RenderRoad"),
+                "Railways": Xml_setting("Railways", "./RenderRail")
+            },
+            "Rail lines": {
+                "Train": Xml_setting("Train", "./RenderRailTrain"),
+                "Tram": Xml_setting("Tram", "./RenderRailTram"),
+                "Metro": Xml_setting("Metro", "./RenderRailMetro"),
+                "Monorail": Xml_setting("Monorail", "./RenderRailMonorail"),
+                "Cable car": Xml_setting("Cable car", "./RenderRailCableCar")
+            },
+            "Overlay": {
+                "Grid": Xml_setting("Grid", "./RenderGrid"),
+                "Districts": Xml_setting("District names", "./RenderDistrictName"),
+                "Building names": Xml_setting("Building names", "./RenderBuildingName"),
+                "Map symbols": Xml_setting("Map symbols", "./RenderMapSymbol"),
+                "Road names": Xml_setting("Road names", "./RenderRoadName"),
+                "Park names": Xml_setting("Park names", "./RenderParkName")
+            }
+
+        }
+        public_transport = {
+            "Lines and stops": {
+                "Bus lines": Xml_setting("Bus lines", "./RouteMapConfig/RenderBusLine"),
+                "Bus stops": Xml_setting("Bus stops", "./RouteMapConfig/RenderBusStop"),
+                "Tram lines": Xml_setting("Tram lines", "./RouteMapConfig/RenderTramLine"),
+                "Tram stops": Xml_setting("Tram stops", "./RouteMapConfig/RenderTramStop"),
+                "Metro lines": Xml_setting("Metro lines", "./RouteMapConfig/RenderMetroLine"),
+                "Metro stops": Xml_setting("Metro stops", "./RouteMapConfig/RenderMetroStation"),
+                "Train lines": Xml_setting("Train lines", "./RouteMapConfig/RenderTrainLine"),
+                "Train stops": Xml_setting("Train stops", "./RouteMapConfig/RenderTrainStation"),
+                "Monorail lines": Xml_setting("Monorail lines", "./RouteMapConfig/RenderMonorailLine"),
+                "Monorail stops": Xml_setting("Monorail stops", "./RouteMapConfig/RenderMonorailStation"),
+                "Blimp lines": Xml_setting("Blimp lines", "./RouteMapConfig/RenderBlimpLine"),
+                "Blimp stops": Xml_setting("Blimp stops", "./RouteMapConfig/RenderBlimpStop"),
+                "Ferry lines": Xml_setting("Ferry lines", "./RouteMapConfig/RenderFerryLine"),
+                "Ferry stops": Xml_setting("Ferry stops", "./RouteMapConfig/RenderFerryHarbor")
+            },
+            "Misc": {
+                "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RenderTerrain"),
+                "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RenderTerrain"),
+                "auto_color": Xml_setting("Auto coloring", "./RenderTerrain"),
+                "widen_line": Xml_setting("Widen line if paths share same segment", "./RenderTerrain"),
+                "detect_end_loops": Xml_setting("Detect end loops", "./RenderTerrain"),
+                "mark_one_way": Xml_setting("Mark one way routes", "./RenderTerrain"),
+                "merged_numbering": Xml_setting("Merged route numberings", "./RenderTerrain")
+            }
+
+        } 
 
 
 class Settings():
@@ -1583,38 +1611,23 @@ class Targets_frame(Content_frame):
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the targets frame."""
-        self.group1_frame = ttk.Labelframe(self.frame, text = "Elements")
-        for setting in constants.settings.drawing_target.group1:
-            row = ttk.Frame(self.group1_frame)
-            ttk.Checkbutton(row)
-            ttk.Label(row, text = setting)
 
-        self.group2_frame = ttk.Labelframe(self.frame, text = "Rail lines")
-        for setting in constants.settings.drawing_target.group2:
-            row = ttk.Frame(self.group2_frame)
-            ttk.Checkbutton(row)
-            ttk.Label(row, text = setting)
-            
-        self.group3_frame = ttk.Labelframe(self.frame, text = "Overlay")
-        for setting in constants.settings.drawing_target.group3:
-            row = ttk.Frame(self.group3_frame)
-            ttk.Checkbutton(row)
-            ttk.Label(row, text = setting)
+        for name, contents in constants.settings.drawing_target.items():
+            labelframe = ttk.Labelframe(self.frame, text = name)
+            for key, setting in contents.items():
+                ttk.Checkbutton(labelframe)
+                ttk.Label(labelframe, text = setting.text)
 
     def _grid(self) -> None:
         """Grid the widgets contained in the targets frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-        self.group1_frame.grid(row = 0, column = 0, sticky = tkinter.EW)
-        self.group2_frame.grid(row = 1, column = 0, sticky = tkinter.EW)
-        self.group3_frame.grid(row = 2, column = 0, sticky = tkinter.EW)
-        for subframe in self.frame.winfo_children():
-            rows = subframe.winfo_children()
-            for i, row in zip(range(len(rows)), rows):
-                row.grid(row = i, column = 0, sticky = tkinter.W)
-                widgets = row.winfo_children()
-                for j, widget in zip(range(len(widgets)), widgets):
-                    widget.grid(row = 0, column = j, sticky = tkinter.W)
+        subframes = self.frame.winfo_children()
+        for i, subframe in zip(range(len(subframes)), subframes):
+            subframe.grid(row = i, column = 0, sticky = tkinter.EW)
+            widgets = subframe.winfo_children()
+            for j, widget in zip(range(len(widgets)), widgets):
+                widget.grid(row = j//2, column = j%2, sticky = tkinter.W)
 
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the targets frame."""
@@ -1632,37 +1645,22 @@ class Public_transport_frame(Content_frame):
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the targets frame."""
-        self.lines_frame = ttk.Labelframe(self.frame, text = "Lines and stops")
-        for vehicle in constants.settings.public_transport.vehicles:
-            ttk.Checkbutton(self.lines_frame)
-            ttk.Label(self.lines_frame, text = f"{vehicle} stops")
-            ttk.Checkbutton(self.lines_frame)
-            ttk.Label(self.lines_frame, text = f"{vehicle} lines")
-
-        self.misc_frame = ttk.Labelframe(self.frame, text = "Misc")
-        for setting in constants.settings.public_transport.misc:
-            row = ttk.Frame(self.misc_frame)
-            ttk.Checkbutton(row)
-            ttk.Label(row, text = setting)
-
+        for name, contents in constants.settings.public_transport.items():
+            labelframe = ttk.Labelframe(self.frame, text = name)
+            for key, setting in contents.items():
+                ttk.Checkbutton(labelframe)
+                ttk.Label(labelframe, text = setting.text)
 
     def _grid(self) -> None:
         """Grid the widgets contained in the targets frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-        self.lines_frame.grid(row = 0, column = 0, sticky = tkinter.EW)
-        self.misc_frame.grid(row = 1, column = 0, sticky = tkinter.EW)
-
-        widgets = self.lines_frame.winfo_children()
-        for i, widget in zip(range(len(widgets)), widgets):
-            widget.grid(row = i//4, column = i%4, sticky = tkinter.W)
-
-        rows = self.misc_frame.winfo_children()
-        for i, row in zip(range(len(rows)), rows):
-            row.grid(row = i, column = 0, sticky = tkinter.W)
-            widgets = row.winfo_children()
+        subframes = self.frame.winfo_children()
+        for i, subframe in zip(range(len(subframes)), subframes):
+            subframe.grid(row = i, column = 0, sticky = tkinter.EW)
+            widgets = subframe.winfo_children()
             for j, widget in zip(range(len(widgets)), widgets):
-                widget.grid(row = 0, column = j, sticky = tkinter.W)
+                widget.grid(row = j//2, column = j%2, sticky = tkinter.W)
 
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the public transport frame."""
