@@ -23,7 +23,7 @@ from PIL import ImageTk, Image
 
 from abc import ABC, abstractmethod
 
-import xml
+import xml.etree.ElementTree as ET
 
 # Suggestions for any sort of improvement are welcome.
 
@@ -273,6 +273,7 @@ class constants:
     previewCursor = "fleur"
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
+    xml_file_name = "CSLMapViewConfig.xml"
     class settings:
         drawing_target = {
             "Elements": {
@@ -340,7 +341,7 @@ class Settings():
         self.root = None
 
         if file is not None:
-            self.tree = xml.etree.Elementtree.parse(self.file)
+            self.tree = ET.parse(self.file)
             self.root = self.tree.getroot()
             self.log.info(f"Successfully connected settings file {self.file}")
         else:
@@ -358,14 +359,28 @@ class Settings():
             for key, setting in sets.items():
                 self.settings[key] = setting.xmlpath
 
-    def set_file(self, file: Path, save_changes: bool = False):
-        """Change the used file to file. If save_changes is True, write the changes to the old file before closing."""
-        if save_changes:
-            self.write()
-        self.file = Path
-        self.tree = xml.etree.Elementtree.parse(self.file)
-        self.root = self.tree.getroot()
-        self.log.info(f"Successfully connected settings file {self.file}")
+    def set_file(self, file: Path, save_changes: bool = False) -> bool:
+        """
+        Change the used file to file.
+        
+        If save_changes is True, write the changes to the old file before closing.
+        Return whether the file was successfully changed.
+        """
+        try:
+            if save_changes:
+                if self.file is not None:
+                    self.write()
+                else:
+                    self.log.warning("Trying to save settings with no file")
+            assert file.exists()
+            self.file = file
+            self.tree = ET.parse(self.file)
+            self.root = self.tree.getroot()
+            self.log.info(f"Successfully connected settings file {self.file}")
+            return True
+        except Exception as e:
+            self.log.exception("An exception occoured while trying to assign file")
+            raise
 
     def write(self):
         """Write all local changes to the source file."""
@@ -433,6 +448,7 @@ class App():
         callbacks = self.register_callbacks()
 
         self.exporter = Exporter(self.lock)
+        self.settings = Settings()
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
         
@@ -569,9 +585,32 @@ class App():
             self.vars["exe_file"].set(selected_file)
             constants.sampleCommand[0] = selected_file
             self.exporter.set_exefile(selected_file)
+            if self.load_settings_xml(Path(selected_file).parent):
+                self.window.set_state("xml_loaded")
             self.refresh_preview()
         else:
             self.vars["exe_file"].set(constants.noFileText)
+
+
+    def load_settings_xml(self, directory: Path) -> bool:
+        """
+        Attempt to load the settings xml file to Settings object.
+
+        Return True if successful, False otherwise.
+        """
+        while True:
+            try:
+                xml_file = Path(directory, constants.xml_file_name)
+                self.settings.set_file(xml_file)
+                return True
+            except Exception as e:
+                if ask_non_fatal_error(f"Could not load settings file {xml_file}.\n{str(e)}"):
+                    self.log.info("Retrying after failed attempt to load settings file")
+                    continue
+                else:
+                    self.log.exception("Returning fter failed to load settings file.")
+                    return False
+
 
     def abort(self, event: tkinter.Event = None) -> None:
         """Stop currently running export process.
@@ -1655,6 +1694,9 @@ class Targets_frame(Content_frame):
             self.show()
         elif state in constants.pages:
             self.hide()
+        elif state == "xml_loaded":
+            pass
+            #TODO: Update widgets when xml loads
 
 class Public_transport_frame(Content_frame):
 
@@ -1688,6 +1730,9 @@ class Public_transport_frame(Content_frame):
             self.show()
         elif state in constants.pages:
             self.hide()
+        elif state == "xml_loaded":
+            pass
+            #TODO: Update widgets when xml loads
 
 
 class Preview():
