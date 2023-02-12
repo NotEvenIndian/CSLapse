@@ -332,7 +332,7 @@ class constants:
 class Settings():
     """Class handling the external xml settings file."""
 
-    def __init__(file: Path = None):
+    def __init__(self, file: Path = None):
         self.file = Path
         self.log = logging.getLogger("xmlparser")
 
@@ -346,13 +346,19 @@ class Settings():
         else:
             self.log.info("Initiated settings object with no file")
 
-    def _store_important_settings():
-        """Store all xml elements relevant to the application in a way that they are accessible easily."""
-        self.settings = {
-            self.root.find(xml_tag)
-        }
+        self._store_settings()
 
-    def set_file(file: Path, save_changes: bool = False):
+    def _store_settings(self):
+        """Store all xml elements relevant to the application in a way that they are accessible easily."""
+        self.settings = {}
+        for sets in constants.settings.drawing_target.values():
+            for key, setting in sets.items():
+                self.settings[key] = setting.xmlpath
+        for sets in constants.settings.public_transport.values():
+            for key, setting in sets.items():
+                self.settings[key] = setting.xmlpath
+
+    def set_file(self, file: Path, save_changes: bool = False):
         """Change the used file to file. If save_changes is True, write the changes to the old file before closing."""
         if save_changes:
             self.write()
@@ -361,7 +367,7 @@ class Settings():
         self.root = self.tree.getroot()
         self.log.info(f"Successfully connected settings file {self.file}")
 
-    def write():
+    def write(self):
         """Write all local changes to the source file."""
         if self.tree is not None:
             self.tree.write(self.file)
@@ -369,11 +375,20 @@ class Settings():
         else:
             self.log.warning("Trying to write with no file")
 
-    def change(setting_name: str, value: Any):
+    def change(self, setting_key: str, value: Any):
         """Set the setting given to value locally, but do ot write yet."""
 
-    def get(setting_name: str):
+        if setting_key in self.settings:
+            self.tree.find(settings[setting_key]).text(value)
+        else:
+            raise KeyError(f"Key {setting_key} not in settings dictionary")
+
+    def get(self, setting_name: str):
         """Return the value associated with setting_name."""
+        if setting_key in self.settings:
+            return self.tree.find(settings[setting_key]).text()
+        else:
+            raise KeyError(f"Key {setting_key} not in settings dictionary")
 
 
 class App():
@@ -1897,6 +1912,7 @@ def main() -> None:
     log.info(f"CSLapse started with working directory '{current_directory}'.")
     try:
         with App() as app:
+            s = Settings()
             app.root.mainloop()
     except Exception as e:
         log.exception("An unhandled exception occoured.")
