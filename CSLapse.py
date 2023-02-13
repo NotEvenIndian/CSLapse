@@ -1718,27 +1718,32 @@ class Targets_frame(Content_frame):
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the targets frame."""
 
-        for name, contents in constants.settings.drawing_target.items():
-            labelframe = ttk.Labelframe(self.frame, text = name)
-            for key, setting in contents.items():
-                ttk.Checkbutton(labelframe)
-                ttk.Label(labelframe, text = setting.text)
+        self.no_file_frame = ttk.Frame(self.frame)
+        self.no_file_label = ttk.Label(self.no_file_frame, text = constants.texts.no_settings_message)
+
+        self.xml_error_frame = ttk.Frame(self.frame)
+        self.xml_error_label = ttk.Label(self.no_file_frame, text = constants.texts.settings_not_loaded_message)
+
+        self.settings_frame = ttk.Frame(self.frame)
 
     def _grid(self) -> None:
         """Grid the widgets contained in the targets frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-        subframes = self.frame.winfo_children()
-        for i, subframe in zip(range(len(subframes)), subframes):
-            subframe.grid(row = i, column = 0, sticky = tkinter.EW)
-            widgets = subframe.winfo_children()
-            for j, widget in zip(range(len(widgets)), widgets):
-                widget.grid(row = j//2, column = j%2, sticky = tkinter.W)
+        self.no_file_frame.grid(column = 0, row = 0)
+        self.no_file_label.grid(column = 0, row = 0)
+
+        self.xml_error_frame.grid(column = 0, row = 0)
+        self.xml_error_label.grid(column = 0, row = 0)
+
+        self.settings_frame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
 
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the targets frame."""
         self.hide()
+        self._hide_widgets(self.settings_frame, self.xml_error_frame)
         self.frame.columnconfigure(0, weight = 1)
+        self.settings_frame.columnconfigure(0, weight = 1)
 
     def set_state(self, state: str) -> None:
         """Set options for the widgets in the targets frame."""
@@ -1747,8 +1752,26 @@ class Targets_frame(Content_frame):
         elif state in constants.pages:
             self.hide()
         elif state == "xml_loaded":
-            pass
-            #TODO: Update widgets when xml loads
+            self._load_settings()
+            self._hide_widgets(self.no_file_frame, self.xml_error_frame)
+            self._show_widgets(self.settings_frame)
+        elif state == "xml_load_error":
+            self._hide_widgets(self.no_file_frame, self.settings_frame)
+            self._show_widgets(self.xml_error_frame)
+
+    def _load_settings(self) -> None:
+        frame_row = 0
+        for name, contents in constants.settings.drawing_target.items():
+            labelframe = ttk.Labelframe(self.settings_frame, text = name)
+            labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
+            row = 0
+            for key, setting in contents.items():
+                var = tkinter.IntVar()
+                settings.add_variable(key, var, setting.xmlpath, True)
+                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = settings.change_state)
+                cb.grid(row = row, column = 0, sticky = tkinter.W)
+                row += 1
+            frame_row += 1
 
 class Public_transport_frame(Content_frame):
 
