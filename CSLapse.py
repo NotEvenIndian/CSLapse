@@ -277,7 +277,7 @@ class constants:
     inactive_page_color = "#dddddd"
     active_page_color = "#eeeeee"
     clickable = "hand2"
-    previewCursor = "fleur"
+    preview_cursor = "fleur"
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
     xml_file_name = "CSLMapViewConfig.xml"
@@ -453,6 +453,7 @@ def ask_save_settings(func):
 
 class App():
     """Class overlooking everything - the gui, the variables, the constants and more."""
+    #TODO: Aborting is broken. Fix that.
     
     def __enter__(self) -> object:
         return self
@@ -670,7 +671,7 @@ class App():
             return
 
         if threading.current_thread() is not threading.main_thread():
-            raise AbortException("Abort initiated.")
+            raise AbortException("Abort initiated on thread other than main.")
         else:
             self.exporter.set_abort()
             self.window.set_state("aborting")
@@ -855,7 +856,7 @@ class Exporter():
 
     def can_abort(self) -> bool:
         """Return if the export process can be aborted."""
-        return not (self.is_aborting or self.is_running)
+        return (not self.is_aborting) and self.is_running
 
     def set_abort(self) -> None:
         """Set variables to start aborting."""
