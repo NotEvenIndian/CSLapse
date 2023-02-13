@@ -32,6 +32,9 @@ class ExportError(Exception):pass
 class Xml_setting(NamedTuple):
     text: str
     xmlpath: str
+class Local_setting(NamedTuple):
+    var: tkinter.IntVar
+    xmlpath: str
 
 def get_logger_config_dict() -> dict:
     """Return the logger configuration dictionary."""
@@ -263,6 +266,8 @@ class constants:
         invalidLengthMessage = "Invalid video length!"
         invalidLengthMessage = "Invalid video length!"
         invalidLengthMessage = "Invalid video length!"
+        save_settings = "Apply settings?"
+        ask_save_settings = "You have made unsaved changes to the settings. Do you want to save them?"
         askAbort = "Are you sure you want to abort? This cannot be undone, all progress will be lost."
         abortAlreadyRunning = "Cannot abort export process: No export process to abort or an abort process is already running."
         exitAfterAbortEnded = "An abort operation is running. The program will exit once it has finished."    
@@ -348,18 +353,8 @@ class Settings():
             self.log.info(f"Successfully connected settings file {self.file}")
         else:
             self.log.info("Initiated settings object with no file")
-
-        self._store_settings()
-
-    def _store_settings(self):
-        """Store all xml elements relevant to the application in a way that they are accessible easily."""
         self.settings = {}
-        for sets in constants.settings.drawing_target.values():
-            for key, setting in sets.items():
-                self.settings[key] = setting.xmlpath
-        for sets in constants.settings.public_transport.values():
-            for key, setting in sets.items():
-                self.settings[key] = setting.xmlpath
+        self.state_changed = False
 
     def set_file(self, file: Path, save_changes: bool = False) -> bool:
         """
@@ -370,42 +365,90 @@ class Settings():
         """
         try:
             if save_changes:
-                if self.file is not None:
-                    self.write()
-                else:
-                    self.log.warning("Trying to save settings with no file")
+                if self.state_changed:
+                    if self.file is not None:
+                        self.write()
+                    else:
+                        self.log.warning("Trying to save settings with no file")
             assert file.exists()
             self.file = file
             self.tree = ET.parse(self.file)
             self.root = self.tree.getroot()
+            self.state_changed = False
             self.log.info(f"Successfully connected settings file {self.file}")
             return True
         except Exception as e:
             self.log.exception("An exception occoured while trying to assign file")
             raise
 
-    def write(self):
+    def write(self) -> None:
         """Write all local changes to the source file."""
         if self.tree is not None:
+            for setting in self.settings.values():
+                self.tree.find(setting.xmlpath).text = self.to_xml(setting.var.get())
             self.tree.write(self.file)
+            self.state_changed = False
             self.log.info("Changes written to file")
         else:
             self.log.warning("Trying to write with no file")
 
-    def change(self, setting_key: str, value: Any):
-        """Set the setting given to value locally, but do ot write yet."""
+    def add_variable(self, key: str, var: tkinter.IntVar,xmlpath: str, set_var: bool = False) -> None:
+        """
+        Add a variable to the settings that can be changed.
+        
+        If set_var is set, set it to the value fund in self.file.
+        """
+        self.settings[key] = Local_setting(var, xmlpath)
+        if set_var:
+            self.settings[key].var.set(self.to_var(self.get(key)))
 
+    def get(self, setting_key: str) -> Any:
+        """
+        Return the value associated with setting_key.
+        
+        Raise KeyError if there is no value associated with the key.
+        """
         if setting_key in self.settings:
-            self.tree.find(settings[setting_key]).text(value)
+            return self.to_var(self.tree.find(self.settings[setting_key].xmlpath).text)
         else:
             raise KeyError(f"Key {setting_key} not in settings dictionary")
 
-    def get(self, setting_name: str):
-        """Return the value associated with setting_name."""
-        if setting_key in self.settings:
-            return self.tree.find(settings[setting_key]).text()
+    def to_xml(self, setting: Any) -> str:
+        """Change the given setting to the corresponding text in the xml file."""
+        if setting == 0:
+            return "false"
+        elif setting == 1:
+            return "true"
         else:
-            raise KeyError(f"Key {setting_key} not in settings dictionary")
+            return str(setting)
+
+    def to_var(self, setting: str) -> Any:
+        """Change the given setting to the corresponding value for the tkinter variables."""
+        if setting == "true":
+            return 1
+        elif setting == "false":
+            return 0
+        else:
+            return setting
+
+    def change_state(self) -> None:
+        """Signal that the state of some elements have been changed."""
+        self.state_changed = True
+
+    def has_state_changed(self) -> bool:
+        """Return whether the state of some elements is different from the xml file."""
+        return self.state_changed
+
+def ask_save_settings(func):
+    def inner(*args, **kwargs):
+        if settings.has_state_changed():
+            if messagebox.askyesno(title = constants.texts.save_settings, message = constants.texts.ask_save_settings):
+                settings.write()
+            else:
+                return
+        func(*args, **kwargs)
+
+    return inner
 
 
 class App():
@@ -450,7 +493,7 @@ class App():
         callbacks = self.register_callbacks()
 
         self.exporter = Exporter(self.lock)
-        self.settings = Settings()
+        self.settings = settings
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
         
@@ -680,6 +723,7 @@ class App():
         except Exception:
             return False
 
+    @ask_save_settings
     def refresh_pressed(self) -> None:
         """
         Callback to be called when the refresh preview button is pressed.
@@ -697,8 +741,14 @@ class App():
         if sample == "":
             show_warning(title = "Warning", message = "Not enough files to match video frames!")
             return
+        if self.settings.has_state_changed():
+            if messagebox.askyesno(title = constants.texts.save_settings, message = constants.texts.ask_save_settings):
+                self.settings.write()
+            else:
+                return
         self.refresh_preview()
 
+    @ask_save_settings
     def submit_pressed(self) -> None:
         """Check if all conditions are satified and start exporting if yes. Show warning if not."""
         self.log.info(f'Submit button pressed with entry data:\nexefile={self.vars["exe_file"].get()}\nfps={self.vars["fps"].get()}\nwidth={self.vars["width"].get()}\nvideolenght={self.vars["video_length"].get()}\nthreads={self.vars["threads"].get()}\nretry={self.vars["retry"].get()}')
@@ -1712,11 +1762,6 @@ class Public_transport_frame(Content_frame):
         self.xml_error_label = ttk.Label(self.no_file_frame, text = constants.texts.settings_not_loaded_message)
 
         self.settings_frame = ttk.Frame(self.frame)
-        for name, contents in constants.settings.public_transport.items():
-            labelframe = ttk.Labelframe(self.settings_frame, text = name)
-            for key, setting in contents.items():
-                ttk.Checkbutton(labelframe)
-                ttk.Label(labelframe, text = setting.text)
 
     def _grid(self) -> None:
         """Grid the widgets contained in the targets frame."""
@@ -1729,12 +1774,6 @@ class Public_transport_frame(Content_frame):
         self.xml_error_label.grid(column = 0, row = 0)
 
         self.settings_frame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
-        subframes = self.settings_frame.winfo_children()
-        for i, subframe in zip(range(len(subframes)), subframes):
-            subframe.grid(row = i, column = 0, sticky = tkinter.EW)
-            widgets = subframe.winfo_children()
-            for j, widget in zip(range(len(widgets)), widgets):
-                widget.grid(row = j//2, column = j%2, sticky = tkinter.W)
 
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the public transport frame."""
@@ -1750,15 +1789,31 @@ class Public_transport_frame(Content_frame):
         elif state in constants.pages:
             self.hide()
         elif state == "xml_loaded":
+            self._load_settings()
             self._hide_widgets(self.no_file_frame, self.xml_error_frame)
             self._show_widgets(self.settings_frame)
         elif state == "xml_load_error":
             self._hide_widgets(self.no_file_frame, self.settings_frame)
             self._show_widgets(self.xml_error_frame)
 
+    def _load_settings(self) -> None:
+        frame_row = 0
+        for name, contents in constants.settings.public_transport.items():
+            labelframe = ttk.Labelframe(self.settings_frame, text = name)
+            labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
+            row = 0
+            for key, setting in contents.items():
+                var = tkinter.IntVar()
+                settings.add_variable(key, var, setting.xmlpath, True)
+                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = settings.change_state)
+                cb.grid(row = row, column = 0, sticky = tkinter.W)
+                row += 1
+            frame_row += 1
+
 
 class Preview():
     """ Object that handles the preview functionaltiy in the GUI"""
+    #TODO: When exporting, the printarea is set to the areas value when the export finished, not to that when it started Should be fixed.
 
     class Printarea():
         """Class for the outline of the area that will be exported."""
@@ -1979,7 +2034,6 @@ def main() -> None:
     log.info(f"CSLapse started with working directory '{current_directory}'.")
     try:
         with App() as app:
-            s = Settings()
             app.root.mainloop()
     except Exception as e:
         log.exception("An unhandled exception occoured.")
@@ -1990,4 +2044,5 @@ def main() -> None:
 if __name__ == "__main__":
     logging.config.dictConfig(get_logger_config_dict())
     current_directory = Path(__file__).parent.resolve() # current directory
+    settings = Settings()
     main()
