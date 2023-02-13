@@ -256,6 +256,8 @@ class constants:
         openSampleTitle = "Select a cslmap save of your city"
         noExeMessage = "Select CSLMapviewer.exe first!"
         noSampleMessage = "Select a city file first!"
+        no_settings_message = "Select CSLMapViewer.exe to load settings!"
+        settings_not_loaded_message = "Settings file could not be loaded correctly."
         invalidLengthMessage = "Invalid video length!"
         invalidLengthMessage = "Invalid video length!"
         invalidLengthMessage = "Invalid video length!"
@@ -587,10 +589,11 @@ class App():
             self.exporter.set_exefile(selected_file)
             if self.load_settings_xml(Path(selected_file).parent):
                 self.window.set_state("xml_loaded")
+            else:
+                self.window.set_state("xml_load_error")
             self.refresh_preview()
         else:
             self.vars["exe_file"].set(constants.noFileText)
-
 
     def load_settings_xml(self, directory: Path) -> bool:
         """
@@ -610,7 +613,6 @@ class App():
                 else:
                     self.log.exception("Returning fter failed to load settings file.")
                     return False
-
 
     def abort(self, event: tkinter.Event = None) -> None:
         """Stop currently running export process.
@@ -1702,8 +1704,16 @@ class Public_transport_frame(Content_frame):
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the targets frame."""
+
+        self.no_file_frame = ttk.Frame(self.frame)
+        self.no_file_label = ttk.Label(self.no_file_frame, text = constants.texts.no_settings_message)
+
+        self.xml_error_frame = ttk.Frame(self.frame)
+        self.xml_error_label = ttk.Label(self.no_file_frame, text = constants.texts.settings_not_loaded_message)
+
+        self.settings_frame = ttk.Frame(self.frame)
         for name, contents in constants.settings.public_transport.items():
-            labelframe = ttk.Labelframe(self.frame, text = name)
+            labelframe = ttk.Labelframe(self.settings_frame, text = name)
             for key, setting in contents.items():
                 ttk.Checkbutton(labelframe)
                 ttk.Label(labelframe, text = setting.text)
@@ -1712,7 +1722,14 @@ class Public_transport_frame(Content_frame):
         """Grid the widgets contained in the targets frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
-        subframes = self.frame.winfo_children()
+        self.no_file_frame.grid(column = 0, row = 0)
+        self.no_file_label.grid(column = 0, row = 0)
+
+        self.xml_error_frame.grid(column = 0, row = 0)
+        self.xml_error_label.grid(column = 0, row = 0)
+
+        self.settings_frame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
+        subframes = self.settings_frame.winfo_children()
         for i, subframe in zip(range(len(subframes)), subframes):
             subframe.grid(row = i, column = 0, sticky = tkinter.EW)
             widgets = subframe.winfo_children()
@@ -1722,7 +1739,9 @@ class Public_transport_frame(Content_frame):
     def _configure(self) -> None:
         """Set configuration optionis for the widgets in the public transport frame."""
         self.hide()
+        self._hide_widgets(self.settings_frame, self.xml_error_frame)
         self.frame.columnconfigure(0, weight = 1)
+        self.settings_frame.columnconfigure(0, weight = 1)
 
     def set_state(self, state: str) -> None:
         """Set options for the widgets in the public transport frame."""
@@ -1731,8 +1750,11 @@ class Public_transport_frame(Content_frame):
         elif state in constants.pages:
             self.hide()
         elif state == "xml_loaded":
-            pass
-            #TODO: Update widgets when xml loads
+            self._hide_widgets(self.no_file_frame, self.xml_error_frame)
+            self._show_widgets(self.settings_frame)
+        elif state == "xml_load_error":
+            self._hide_widgets(self.no_file_frame, self.settings_frame)
+            self._show_widgets(self.xml_error_frame)
 
 
 class Preview():
