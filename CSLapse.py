@@ -253,7 +253,7 @@ class constants:
     defaultAreas = 9.0
     noFileText = "No file selected"
     rotaOptions = ["0°", "90°", "180°", "270°"]
-    pages = ["general_page", "targets_page", "public_transport_page", "terrain_page"]
+    pages = ["general_page", "drawing_target", "public_transport", "terrain_page"]
     class texts:
         openExeTitle = "Select CSLMapViewer.exe"
         openSampleTitle = "Select a cslmap save of your city"
@@ -281,8 +281,8 @@ class constants:
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
     xml_file_name = "CSLMapViewConfig.xml"
-    class settings:
-        drawing_target = {
+    settings = {
+        "drawing_target": {
             "Elements": {
                 "Terrain": Xml_setting("Terrain", "./RenderTerrain"),
                 "Forest": Xml_setting("Forest", "./RenderForest"),
@@ -306,8 +306,12 @@ class constants:
                 "Park names": Xml_setting("Park names", "./RenderParkName")
             }
 
-        }
-        public_transport = {
+        },
+        "public_transport": {
+            "General": {
+                "transport_routes": Xml_setting("Public transport routes", "./RenderTransportRoute"),
+                "route_numbering": Xml_setting("Route numberigs", "./RenderTransport")
+            },
             "Lines and stops": {
                 "Bus lines": Xml_setting("Bus lines", "./RouteMapConfig/RenderBusLine"),
                 "Bus stops": Xml_setting("Bus stops", "./RouteMapConfig/RenderBusStop"),
@@ -325,16 +329,18 @@ class constants:
                 "Ferry stops": Xml_setting("Ferry stops", "./RouteMapConfig/RenderFerryHarbor")
             },
             "Misc": {
-                "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RenderTerrain"),
-                "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RenderTerrain"),
-                "auto_color": Xml_setting("Auto coloring", "./RenderTerrain"),
-                "widen_line": Xml_setting("Widen line if paths share same segment", "./RenderTerrain"),
-                "detect_end_loops": Xml_setting("Detect end loops", "./RenderTerrain"),
-                "mark_one_way": Xml_setting("Mark one way routes", "./RenderTerrain"),
-                "merged_numbering": Xml_setting("Merged route numberings", "./RenderTerrain")
+                "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RouteMapConfig/MergeBusTramStop"),
+                "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RouteMapConfig/MergeTrainMetroStaion"),
+                "auto_color": Xml_setting("Auto coloring", "./RouteMapConfig/AutoColoring"),
+                "widen_line": Xml_setting("Widen line if paths share same segment", "./RouteMapConfig/WidenOnSharedLines"),
+                "detect_end_loops": Xml_setting("Detect end loops", "./RouteMapConfig/DetectEndLoop"),
+                "mark_one_way": Xml_setting("Mark one way routes", "./RouteMapConfig/MarkOneWayRoutes"),
+                "merged_numbering": Xml_setting("Merged route numberings", "./RouteMapConfig/UseMergedRouteNumberings")
             }
 
-        } 
+        }
+
+    }
 
 
 class Settings():
@@ -453,7 +459,6 @@ def ask_save_settings(func):
 
 class App():
     """Class overlooking everything - the gui, the variables, the constants and more."""
-    #TODO: Aborting is broken. Fix that.
     
     def __enter__(self) -> object:
         return self
@@ -680,7 +685,7 @@ class App():
 
             self.vars["thread_collecting"].set(0)
             collector = ThreadCollector([threading.current_thread()], self.exporter.get_futures(), counter = self.vars["thread_collecting"], callback=events.abort_finished.set)
-            self.window.progressPopup(self.vars["thread_collecting"], collector.total())
+            self.window.progress_popup(self.vars["thread_collecting"], collector.total())
             collector.start()
 
     def cleanup_after_success(self) -> None:
@@ -1161,14 +1166,12 @@ class CSLapse_window():
         self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
-        self.targets_frame = Targets_frame(self.root, vars, callbacks)
-        self.public_transport_frame = Public_transport_frame(self.root, vars, callbacks)
+        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in constants.settings]
         return [
             self.pages_frame,
             self.main_frame,
             self.preview_frame,
-            self.targets_frame,
-            self.public_transport_frame
+            *setting_frames
         ]
 
     def _configure_window(self) -> None:
@@ -1653,7 +1656,7 @@ class Preview_frame(Content_frame):
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
-            self.preview.canvas.configure(cursor = constants.previewCursor)
+            self.preview.canvas.configure(cursor = constants.preview_cursor)
         elif state == "preview_load_error":
             self._enable_widgets(self.refreshPreviewBtn)
             self._show_widgets(self.refreshPreviewBtn)
@@ -1674,7 +1677,7 @@ class Preview_frame(Content_frame):
                 self.originalSizeBtn,
                 self.refreshPreviewBtn
             )
-            self.preview.canvas.configure(cursor = constants.previewCursor)
+            self.preview.canvas.configure(cursor = constants.preview_cursor)
 
     def get_preview(self) -> Preview:
         """Return the preview object of the frame.""" 
@@ -1714,10 +1717,14 @@ class Pages_frame(Content_frame):
                 w.configure(background = constants.inactive_page_color)
             self.frame.winfo_children()[constants.pages.index(state)].configure(background = constants.active_page_color)
 
-class Targets_frame(Content_frame):
+class Settings_page(Content_frame):
+
+    def __init__(self, parent: tkinter.Widget, vars: dict, callbacks: dict, key: str) -> None:
+        super().__init__(parent, vars, callbacks)
+        self.key = key
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
-        """Create the widgets contained in the targets frame."""
+        """Create the non-setting widgets contained in the frame."""
 
         self.no_file_frame = ttk.Frame(self.frame)
         self.no_file_label = ttk.Label(self.no_file_frame, text = constants.texts.no_settings_message)
@@ -1728,7 +1735,7 @@ class Targets_frame(Content_frame):
         self.settings_frame = ttk.Frame(self.frame)
 
     def _grid(self) -> None:
-        """Grid the widgets contained in the targets frame."""
+        """Grid the non-setting widgets contained in the frame."""
         self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
 
         self.no_file_frame.grid(column = 0, row = 0)
@@ -1740,15 +1747,15 @@ class Targets_frame(Content_frame):
         self.settings_frame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
 
     def _configure(self) -> None:
-        """Set configuration optionis for the widgets in the targets frame."""
+        """Set configuration optionis for the non-setting widgets in the frame."""
         self.hide()
         self._hide_widgets(self.settings_frame, self.xml_error_frame)
         self.frame.columnconfigure(0, weight = 1)
         self.settings_frame.columnconfigure(0, weight = 1)
 
     def set_state(self, state: str) -> None:
-        """Set options for the widgets in the targets frame."""
-        if state == "targets_page":
+        """Set options for the widgets in the frame."""
+        if state == self.key:
             self.show()
         elif state in constants.pages:
             self.hide()
@@ -1761,68 +1768,12 @@ class Targets_frame(Content_frame):
             self._show_widgets(self.xml_error_frame)
 
     def _load_settings(self) -> None:
+        """Delete the setting widgets and create new one with state set to the value loaded from file."""
+        for child in self.settings_frame.winfo_children():
+            child.destroy()
+
         frame_row = 0
-        for name, contents in constants.settings.drawing_target.items():
-            labelframe = ttk.Labelframe(self.settings_frame, text = name)
-            labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
-            row = 0
-            for key, setting in contents.items():
-                var = tkinter.IntVar()
-                settings.add_variable(key, var, setting.xmlpath, True)
-                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = settings.change_state)
-                cb.grid(row = row, column = 0, sticky = tkinter.W)
-                row += 1
-            frame_row += 1
-
-class Public_transport_frame(Content_frame):
-
-    def _populate(self, vars: dict, callbacks: dict) -> None:
-        """Create the widgets contained in the targets frame."""
-
-        self.no_file_frame = ttk.Frame(self.frame)
-        self.no_file_label = ttk.Label(self.no_file_frame, text = constants.texts.no_settings_message)
-
-        self.xml_error_frame = ttk.Frame(self.frame)
-        self.xml_error_label = ttk.Label(self.no_file_frame, text = constants.texts.settings_not_loaded_message)
-
-        self.settings_frame = ttk.Frame(self.frame)
-
-    def _grid(self) -> None:
-        """Grid the widgets contained in the targets frame."""
-        self.frame.grid(column = 0, row = 1, sticky = tkinter.NSEW, padx = 2, pady = 5)
-
-        self.no_file_frame.grid(column = 0, row = 0)
-        self.no_file_label.grid(column = 0, row = 0)
-
-        self.xml_error_frame.grid(column = 0, row = 0)
-        self.xml_error_label.grid(column = 0, row = 0)
-
-        self.settings_frame.grid(column = 0, row = 0, sticky = tkinter.NSEW)
-
-    def _configure(self) -> None:
-        """Set configuration optionis for the widgets in the public transport frame."""
-        self.hide()
-        self._hide_widgets(self.settings_frame, self.xml_error_frame)
-        self.frame.columnconfigure(0, weight = 1)
-        self.settings_frame.columnconfigure(0, weight = 1)
-
-    def set_state(self, state: str) -> None:
-        """Set options for the widgets in the public transport frame."""
-        if state == "public_transport_page":
-            self.show()
-        elif state in constants.pages:
-            self.hide()
-        elif state == "xml_loaded":
-            self._load_settings()
-            self._hide_widgets(self.no_file_frame, self.xml_error_frame)
-            self._show_widgets(self.settings_frame)
-        elif state == "xml_load_error":
-            self._hide_widgets(self.no_file_frame, self.settings_frame)
-            self._show_widgets(self.xml_error_frame)
-
-    def _load_settings(self) -> None:
-        frame_row = 0
-        for name, contents in constants.settings.public_transport.items():
+        for name, contents in constants.settings[self.key].items():
             labelframe = ttk.Labelframe(self.settings_frame, text = name)
             labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
             row = 0
