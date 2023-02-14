@@ -1730,7 +1730,7 @@ class Settings_page(Content_frame):
         self.no_file_label = ttk.Label(self.no_file_frame, text = constants.texts.no_settings_message)
 
         self.xml_error_frame = ttk.Frame(self.frame)
-        self.xml_error_label = ttk.Label(self.no_file_frame, text = constants.texts.settings_not_loaded_message)
+        self.xml_error_label = ttk.Label(self.xml_error_frame, text = constants.texts.settings_not_loaded_message)
 
         self.settings_frame = ttk.Frame(self.frame)
 
@@ -1751,6 +1751,7 @@ class Settings_page(Content_frame):
         self.hide()
         self._hide_widgets(self.settings_frame, self.xml_error_frame)
         self.frame.columnconfigure(0, weight = 1)
+        self.frame.rowconfigure(0, weight = 1)
         self.settings_frame.columnconfigure(0, weight = 1)
 
     def set_state(self, state: str) -> None:
@@ -1784,7 +1785,11 @@ class Settings_page(Content_frame):
                 cb.grid(row = row, column = 0, sticky = tkinter.W)
                 row += 1
             frame_row += 1
+        
+        save_btn = ttk.Button(self.settings_frame, text = "Save changes", cursor = constants.clickable, command = settings.write)
+        save_btn.grid(row = frame_row + 1, column = 0, sticky = tkinter.EW)
 
+        self.settings_frame.rowconfigure(frame_row, weight = 1)
 
 class Preview():
     """ Object that handles the preview functionaltiy in the GUI"""
