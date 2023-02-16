@@ -3,6 +3,14 @@ import xml.etree.ElementTree as ET
 from typing import NamedTuple, Any
 import logging
 
+"""
+Module responsible for interacting with the CSLMapView config file.
+
+Usage should be restricted to the settings dictionary containing
+a tree of the settings to be shown in the gui (to be changed to xml)
+and the settings_handler object that can manipulate data and the file.
+"""
+
 
 class Xml_setting(NamedTuple):
     text: str
@@ -120,7 +128,7 @@ class Settings():
         """Write all local changes to the source file."""
         if self.tree is not None:
             for setting in self.settings.values():
-                self.tree.find(setting.xmlpath).text = self.to_xml(setting.var.get())
+                self.tree.find(setting.xmlpath).text = self._to_xml(setting.var.get())
             self.tree.write(self.file)
             self.state_changed = False
             self.log.info("Changes written to file")
@@ -137,7 +145,7 @@ class Settings():
         """
         self.settings[key] = Local_setting(var, xmlpath)
         if set_var:
-            self.settings[key].var.set(self.to_var(self.get(key)))
+            self.settings[key].var.set(self._to_var(self.get(key)))
 
     def get(self, setting_key: str) -> Any:
         """
@@ -146,11 +154,11 @@ class Settings():
         Raise KeyError if there is no value associated with the key.
         """
         if setting_key in self.settings:
-            return self.to_var(self.tree.find(self.settings[setting_key].xmlpath).text)
+            return self._to_var(self.tree.find(self.settings[setting_key].xmlpath).text)
         else:
             raise KeyError(f"Key {setting_key} not in settings dictionary")
 
-    def to_xml(self, setting: Any) -> str:
+    def _to_xml(self, setting: Any) -> str:
         """Change the given setting to the corresponding text in the xml file."""
         if setting == 0:
             return "false"
@@ -159,7 +167,7 @@ class Settings():
         else:
             return str(setting)
 
-    def to_var(self, setting: str) -> Any:
+    def _to_var(self, setting: str) -> Any:
         """Change the given setting to the corresponding value for the local setting variables."""
         if setting == "true":
             return 1
