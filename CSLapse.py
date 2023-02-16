@@ -17,6 +17,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 from PIL import ImageTk, Image
 from abc import ABC, abstractmethod
+from functools import wraps
 
 import settings
 
@@ -274,19 +275,49 @@ class constants:
     
 
 
+def ask_retry_on_fail(on_fail: Callable = None) -> None:
+    """
+    Try running the function and prompt the user when n exception occours.
+
+    The user may choose to retryy the function or not,
+    in which case on_fail is executed and None is returned.
+    """
 
 
-def ask_save_settings(func):
-    def decorator(*args, **kwargs): 
+    def decorator(function: Callable[..., None]) -> None:
+        log = logging.getLogger("root")
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            while True:
+                try:
+                    return function(*args, **kwargs)
+                except AbortException as e:
+                    log.exception("Aborting operation without asking")
+                    break
+                except Exception as e:
+                    if not ask_non_fatal_error(f"An exception occoured:\n{str(e)}\nDo you want to retry?"):
+                        log.exception("Not retrying operation after exception")
+                        break
+            if on_fail is not None:
+                on_fail()
+            return None
+        return wrapper
+
+    return decorator
+
+
+def ask_save_settings(function: Callable):
+    @wraps(function)
+    def wrapper(*args, **kwargs): 
         if settings.settings_handler.has_state_changed():
             action = messagebox.askyesnocancel(title = constants.texts.save_settings, message = constants.texts.ask_save_settings)
             if action is None:
                 return
             elif action:
                 settings.settings_handler.write()
-        func(*args, **kwargs)
+        function(*args, **kwargs)
 
-    return decorator
+    return wrapper
 
 class App():
     """Class overlooking everything - the gui, the variables, the constants and more."""
@@ -400,41 +431,21 @@ class App():
         )
         exporter_thread.start()
 
+    @ask_retry_on_fail(on_fail = events.preview_load_error.set)
     def export_sample(self, command: List[str], sample: str, retry: int) -> None:
         """
         Export png from the cslmap file that will be the given frame of the video.
 
         This function should run on a separate thread.
-        
-        Exceptions:
-            AbortException gets propagated
-            ExportError: non-fatal
-            Other exceptions: non-fatal
         """
-        while 1:
-            try:
-                exported = self.exporter.export_file(
-                    sample,
-                    command,
-                    retry
-                    ) 
-                with self.lock:
-                    self.vars["preview_source"] = Image.open(exported)
-                events.preview_loaded.set()
-                return
-            except AbortException:
-                events.preview_load_error.set()
-                return
-            except ExportError as e:
-                if not ask_non_fatal_error(str(e)):
-                    events.preview_load_error.set()
-                    self.log.exception(f"Returning after failed export of sample file '{sample}'")
-                    return
-            except Exception as e:
-                if not ask_non_fatal_error(str(e)):
-                    events.preview_load_error.set()
-                    self.log.exception(f"Returning after failed export due to unnown exception of sample file '{sample}'")
-                    return
+        exported = self.exporter.export_file(
+            sample,
+            command,
+            retry
+            ) 
+        with self.lock:
+            self.vars["preview_source"] = Image.open(exported)
+        events.preview_loaded.set()
 
     def open_file(self, title: str, filetypes: List[Tuple], default_directory: str = None) -> str:
         """Open file opening dialog box and return the full path to the selected file."""
@@ -871,6 +882,7 @@ class Exporter():
         #Sort array as the order might have changed during threading
         self.image_files = sorted(self.image_files)
 
+    @ask_retry_on_fail()
     def export_image(self, source: str, cmd: List[str], retry: int, progress_variable: tkinter.IntVar) -> None:
         """Call the given command to export the given image, add filename to self.imageFiles.
         
@@ -881,26 +893,20 @@ class Exporter():
             ExportError: non-fatal
             Other exceptions: non-fatal
         """
-        while True:
-            try:
-                new_file_name = self.export_file(source, cmd, retry)
-                break
-            except AbortException as e:
-                raise AbortException from e
-            except ExportError as e:
-                if not ask_non_fatal_error(str(e)):
-                    self.log.exception(f"Skipping file '{source}' after too many unsuccessful attempts.")
-                    return
-                self.log.info(f"Retrying to export '{source}' after too many unsuccessful attempts.")
-            except Exception as e:
-                if not ask_non_fatal_error(str(e)):
-                    self.log.exception(f"Skipping file '{source}' after unknown exception.")
-                    return
-                self.log.info(f"Retrying to export '{source}' after unknown exception.")
+        new_file_name = self.export_file(source, cmd, retry)
         with self.lock:
             self.image_files.append(new_file_name)
             progress_variable.set(progress_variable.get() + 1)
-        return
+
+    @ask_retry_on_fail(events.abort.set)
+    def prepare_video_file(self, width: int, fps: int, out_file: Path = None) -> cv2.VideoWriter:
+        """Create the video file with the required parameters."""
+        return cv2.VideoWriter(
+            self.out_file,
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, width)
+        )
 
     def render_video(self, width: int, fps: int, progress_variable: tkinter.IntVar, out_file: Path = None) -> None:
         """Create an mp4 video file from all the exported images.
@@ -912,25 +918,8 @@ class Exporter():
             Cannot add image to video: non-fatal
         """
         self.out_file = out_file if out_file is not None else str(Path(self.source_directory, f'{self.city_name.encode("ascii", "ignore").decode()}-{timestamp()}.mp4'))
-        while True:
-            try:
-                out = cv2.VideoWriter(
-                    self.out_file,
-                    cv2.VideoWriter_fourcc(*"mp4v"),
-                    fps,
-                    (width, width)
-                    )
-                break
-            except AbortException as e:
-                self.log.exception("Aborted rendering video due to AbortException.")
-                raise
-            except Exception as e:
-                if not ask_aborting_error(str(e)):
-                    self.log.exception("Aborted rendering video due to ubnknown Exception.")
-                    self.gui.root.event_generate('<<Abort>>', when = "tail")
-                    raise AbortException("Aborted due to unresolved aborting error.") from e
-                else:
-                    self.log.warning("Continuing rendering video after unknown Exception.")
+
+        out = self.prepare_video_file(width, fps, out_file)
 
         try:
             i = 0
