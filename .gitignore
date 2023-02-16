@@ -2,4 +2,5 @@ env
 build
 local
 dist
-*.log 
+*.log
+__pycache__

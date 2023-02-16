@@ -5,36 +5,26 @@ from datetime import datetime
 from pathlib import Path
 import threading
 import concurrent.futures
-from typing import List, Tuple, Any, Callable, NamedTuple
+from typing import List, Tuple, Any, Callable
 from shutil import rmtree
-
 import logging
 import logging.config
 import logging.handlers
-
 import cv2
-
 import tkinter
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
-
 from PIL import ImageTk, Image
-
 from abc import ABC, abstractmethod
 
-import xml.etree.ElementTree as ET
+import settings
+
 
 # Suggestions for any sort of improvement are welcome.
 
 class AbortException(Exception):pass
 class ExportError(Exception):pass
-class Xml_setting(NamedTuple):
-    text: str
-    xmlpath: str
-class Local_setting(NamedTuple):
-    var: tkinter.IntVar
-    xmlpath: str
 
 def get_logger_config_dict() -> dict:
     """Return the logger configuration dictionary."""
@@ -281,181 +271,22 @@ class constants:
     noPreviewImage =  resource_path("media/NOIMAGE.png")
     sampleCommand = ["__exeFile__", "__source_file__", "-output", "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]
     xml_file_name = "CSLMapViewConfig.xml"
-    settings = {
-        "drawing_target": {
-            "Elements": {
-                "Terrain": Xml_setting("Terrain", "./RenderTerrain"),
-                "Forest": Xml_setting("Forest", "./RenderForest"),
-                "Buildings": Xml_setting("Buildings", "./RenderBuilding"),
-                "Roads": Xml_setting("Roads", "./RenderRoad"),
-                "Railways": Xml_setting("Railways", "./RenderRail")
-            },
-            "Rail lines": {
-                "Train": Xml_setting("Train", "./RenderRailTrain"),
-                "Tram": Xml_setting("Tram", "./RenderRailTram"),
-                "Metro": Xml_setting("Metro", "./RenderRailMetro"),
-                "Monorail": Xml_setting("Monorail", "./RenderRailMonorail"),
-                "Cable car": Xml_setting("Cable car", "./RenderRailCableCar")
-            },
-            "Overlay": {
-                "Grid": Xml_setting("Grid", "./RenderGrid"),
-                "Districts": Xml_setting("District names", "./RenderDistrictName"),
-                "Building names": Xml_setting("Building names", "./RenderBuildingName"),
-                "Map symbols": Xml_setting("Map symbols", "./RenderMapSymbol"),
-                "Road names": Xml_setting("Road names", "./RenderRoadName"),
-                "Park names": Xml_setting("Park names", "./RenderParkName")
-            }
-
-        },
-        "public_transport": {
-            "General": {
-                "transport_routes": Xml_setting("Public transport routes", "./RenderTransportRoute"),
-                "route_numbering": Xml_setting("Route numberigs", "./RenderTransport")
-            },
-            "Lines and stops": {
-                "Bus lines": Xml_setting("Bus lines", "./RouteMapConfig/RenderBusLine"),
-                "Bus stops": Xml_setting("Bus stops", "./RouteMapConfig/RenderBusStop"),
-                "Tram lines": Xml_setting("Tram lines", "./RouteMapConfig/RenderTramLine"),
-                "Tram stops": Xml_setting("Tram stops", "./RouteMapConfig/RenderTramStop"),
-                "Metro lines": Xml_setting("Metro lines", "./RouteMapConfig/RenderMetroLine"),
-                "Metro stops": Xml_setting("Metro stops", "./RouteMapConfig/RenderMetroStation"),
-                "Train lines": Xml_setting("Train lines", "./RouteMapConfig/RenderTrainLine"),
-                "Train stops": Xml_setting("Train stops", "./RouteMapConfig/RenderTrainStation"),
-                "Monorail lines": Xml_setting("Monorail lines", "./RouteMapConfig/RenderMonorailLine"),
-                "Monorail stops": Xml_setting("Monorail stops", "./RouteMapConfig/RenderMonorailStation"),
-                "Blimp lines": Xml_setting("Blimp lines", "./RouteMapConfig/RenderBlimpLine"),
-                "Blimp stops": Xml_setting("Blimp stops", "./RouteMapConfig/RenderBlimpStop"),
-                "Ferry lines": Xml_setting("Ferry lines", "./RouteMapConfig/RenderFerryLine"),
-                "Ferry stops": Xml_setting("Ferry stops", "./RouteMapConfig/RenderFerryHarbor")
-            },
-            "Misc": {
-                "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RouteMapConfig/MergeBusTramStop"),
-                "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RouteMapConfig/MergeTrainMetroStaion"),
-                "auto_color": Xml_setting("Auto coloring", "./RouteMapConfig/AutoColoring"),
-                "widen_line": Xml_setting("Widen line if paths share same segment", "./RouteMapConfig/WidenOnSharedLines"),
-                "detect_end_loops": Xml_setting("Detect end loops", "./RouteMapConfig/DetectEndLoop"),
-                "mark_one_way": Xml_setting("Mark one way routes", "./RouteMapConfig/MarkOneWayRoutes"),
-                "merged_numbering": Xml_setting("Merged route numberings", "./RouteMapConfig/UseMergedRouteNumberings")
-            }
-
-        }
-
-    }
+    
 
 
-class Settings():
-    """Class handling the external xml settings file."""
 
-    def __init__(self, file: Path = None):
-        self.file = Path
-        self.log = logging.getLogger("xmlparser")
-
-        self.tree = None
-        self.root = None
-
-        if file is not None:
-            self.tree = ET.parse(self.file)
-            self.root = self.tree.getroot()
-            self.log.info(f"Successfully connected settings file {self.file}")
-        else:
-            self.log.info("Initiated settings object with no file")
-        self.settings = {}
-        self.state_changed = False
-
-    def set_file(self, file: Path, save_changes: bool = False) -> bool:
-        """
-        Change the used file to file.
-        
-        If save_changes is True, write the changes to the old file before closing.
-        Return whether the file was successfully changed.
-        """
-        try:
-            if save_changes:
-                if self.state_changed:
-                    if self.file is not None:
-                        self.write()
-                    else:
-                        self.log.warning("Trying to save settings with no file")
-            assert file.exists()
-            self.file = file
-            self.tree = ET.parse(self.file)
-            self.root = self.tree.getroot()
-            self.state_changed = False
-            self.log.info(f"Successfully connected settings file {self.file}")
-            return True
-        except Exception as e:
-            self.log.exception("An exception occoured while trying to assign file")
-            raise
-
-    def write(self) -> None:
-        """Write all local changes to the source file."""
-        if self.tree is not None:
-            for setting in self.settings.values():
-                self.tree.find(setting.xmlpath).text = self.to_xml(setting.var.get())
-            self.tree.write(self.file)
-            self.state_changed = False
-            self.log.info("Changes written to file")
-        else:
-            self.log.warning("Trying to write with no file")
-
-    def add_variable(self, key: str, var: tkinter.IntVar,xmlpath: str, set_var: bool = False) -> None:
-        """
-        Add a variable to the settings that can be changed.
-        
-        If set_var is set, set it to the value fund in self.file.
-        """
-        self.settings[key] = Local_setting(var, xmlpath)
-        if set_var:
-            self.settings[key].var.set(self.to_var(self.get(key)))
-
-    def get(self, setting_key: str) -> Any:
-        """
-        Return the value associated with setting_key.
-        
-        Raise KeyError if there is no value associated with the key.
-        """
-        if setting_key in self.settings:
-            return self.to_var(self.tree.find(self.settings[setting_key].xmlpath).text)
-        else:
-            raise KeyError(f"Key {setting_key} not in settings dictionary")
-
-    def to_xml(self, setting: Any) -> str:
-        """Change the given setting to the corresponding text in the xml file."""
-        if setting == 0:
-            return "false"
-        elif setting == 1:
-            return "true"
-        else:
-            return str(setting)
-
-    def to_var(self, setting: str) -> Any:
-        """Change the given setting to the corresponding value for the tkinter variables."""
-        if setting == "true":
-            return 1
-        elif setting == "false":
-            return 0
-        else:
-            return setting
-
-    def change_state(self) -> None:
-        """Signal that the state of some elements have been changed."""
-        self.state_changed = True
-
-    def has_state_changed(self) -> bool:
-        """Return whether the state of some elements is different from the xml file."""
-        return self.state_changed
 
 def ask_save_settings(func):
-    def inner(*args, **kwargs):
-        if settings.has_state_changed():
-            if messagebox.askyesno(title = constants.texts.save_settings, message = constants.texts.ask_save_settings):
-                settings.write()
-            else:
+    def decorator(*args, **kwargs): 
+        if settings.settings_handler.has_state_changed():
+            action = messagebox.askyesnocancel(title = constants.texts.save_settings, message = constants.texts.ask_save_settings)
+            if action is None:
                 return
+            elif action:
+                settings.settings_handler.write()
         func(*args, **kwargs)
 
-    return inner
-
+    return decorator
 
 class App():
     """Class overlooking everything - the gui, the variables, the constants and more."""
@@ -499,7 +330,7 @@ class App():
         callbacks = self.register_callbacks()
 
         self.exporter = Exporter(self.lock)
-        self.settings = settings
+        self.settings = settings.settings_handler
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
         
@@ -747,11 +578,6 @@ class App():
         if sample == "":
             show_warning(title = "Warning", message = "Not enough files to match video frames!")
             return
-        if self.settings.has_state_changed():
-            if messagebox.askyesno(title = constants.texts.save_settings, message = constants.texts.ask_save_settings):
-                self.settings.write()
-            else:
-                return
         self.refresh_preview()
 
     @ask_save_settings
@@ -1166,7 +992,7 @@ class CSLapse_window():
         self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
-        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in constants.settings]
+        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in settings.settings]
         return [
             self.pages_frame,
             self.main_frame,
@@ -1774,19 +1600,19 @@ class Settings_page(Content_frame):
             child.destroy()
 
         frame_row = 0
-        for name, contents in constants.settings[self.key].items():
+        for name, contents in settings.settings[self.key].items():
             labelframe = ttk.Labelframe(self.settings_frame, text = name)
             labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
             row = 0
             for key, setting in contents.items():
                 var = tkinter.IntVar()
-                settings.add_variable(key, var, setting.xmlpath, True)
-                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = settings.change_state)
+                settings.settings_handler.add_variable(key, var, setting.xmlpath, True)
+                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = lambda: settings.settings_handler.change_state())
                 cb.grid(row = row, column = 0, sticky = tkinter.W)
                 row += 1
             frame_row += 1
         
-        save_btn = ttk.Button(self.settings_frame, text = "Save changes", cursor = constants.clickable, command = settings.write)
+        save_btn = ttk.Button(self.settings_frame, text = "Save changes", cursor = constants.clickable, command = lambda: settings.settings_handler.write())
         save_btn.grid(row = frame_row + 1, column = 0, sticky = tkinter.EW)
 
         self.settings_frame.rowconfigure(frame_row, weight = 1)
@@ -2024,5 +1850,4 @@ def main() -> None:
 if __name__ == "__main__":
     logging.config.dictConfig(get_logger_config_dict())
     current_directory = Path(__file__).parent.resolve() # current directory
-    settings = Settings()
     main()
