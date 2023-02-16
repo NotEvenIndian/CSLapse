@@ -760,7 +760,7 @@ class Exporter():
         cmd[1] = str(source_file)
         cmd[3] = str(new_file_name)
 
-        self.log.info(f"Export started with command '{' '.join(cmd)}'")
+        self.log.info(f"Export of file '.../{source_file.name}' 'started")
 
         #call CSLMapview.exe to export the image. Try again at fail, abort after many tries.
         for n in range(retry):
@@ -776,7 +776,7 @@ class Exporter():
                 #Ensure that the image file was successfully created. 
                 assert new_file_name.exists()
                 
-                self.log.info(f"Successfully exported file '{new_file_name}' after {n+1} attempts.")
+                self.log.info(f"Successfully exported file '.../{new_file_name.name}' after {n+1} attempts.")
                 return str(new_file_name)
             except AbortException as error:
                 self.log.exception(f"Aborted while exporting file '{new_file_name}'.")
