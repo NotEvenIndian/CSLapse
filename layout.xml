@@ -1,0 +1,132 @@
+<!--xml file generated using ChatGPT (for the most part)-->
+<!--Shema:
+Settings: root element
+    page: One page in the application - settings that are visible at the same time
+        labelframe: visually grouped settings in a frame with a label `name`
+            row: widgets that are in one row among the settings - there is no widget in the gui corresponding to this element
+                setting: one setting. `name` is show in the application,
+                    `type` is the type of widget (checkbox or integer)
+                    `xmlpath` is the path to the setting in the CSLMapViewConfig.xml file
+                label: label shown in the application
+-->
+<Settings>
+    <page>
+        <labelframe name="labelframe">
+            <row id="0">
+                <setting name="Terrain" path="./RenderTerrain" />
+            </row>
+            <row id="1">
+                <setting name="Forest" path="./RenderForest" />
+            </row>
+            <row id="2">
+                <setting name="Buildings" path="./RenderBuilding" />
+            </row>
+            <row id="3">
+                <setting name="Roads" path="./RenderRoad" />
+            </row>
+            <row id="4">
+                <setting name="Railways" path="./RenderRail" />
+            </row>
+        </labelframe>
+        <labelframe name="Rail lines">
+            <row id="0">
+                <setting name="Train" path="./RenderRailTrain" />
+            </row>
+            <row id="1">
+                <setting name="Tram" path="./RenderRailTram" />
+            </row>
+            <row id="2">
+                <setting name="Metro" path="./RenderRailMetro" />
+            </row>
+            <row id="3">
+                <setting name="Monorail" path="./RenderRailMonorail" />
+            </row>
+            <row id="4">
+                <setting name="Cable car" path="./RenderRailCableCar" />
+            </row>
+        </labelframe>
+        <labelframe name="Overlay">
+            <row id="0">
+                <setting name="Grid" path="./RenderGrid" />
+            </row>
+            <row id="1">
+                <setting name="District names" path="./RenderDistrictName" />
+            </row>
+            <row id="2">
+                <setting name="Building names" path="./RenderBuildingName" />
+            </row>
+            <row id="3">
+                <setting name="Map symbols" path="./RenderMapSymbol" />
+            </row>
+            <row id="4">
+                <setting name="Road names" path="./RenderRoadName" />
+            </row>
+            <row id="5">
+                <setting name="Park names" path="./RenderParkName" />
+            </row>
+        </labelframe>
+    </page>
+    <page>
+        <labelframe name="General">
+            <row id="0">
+                <setting name="Public transport routes" path="./RenderTransportRoute" />
+            </row>
+            <row id="1">
+                <setting name="Route numberigs" path="./RenderTransport" />
+            </row>
+        </labelframe>
+        <labelframe name="Lines and stops">
+            <row id="0">
+                <setting name="Bus lines" path="./RouteMapConfig/RenderBusLine" />
+                <setting name="Bus stops" path="./RouteMapConfig/RenderBusStop" />
+            </row>
+            <row id="1">
+                <setting name="Tram lines" path="./RouteMapConfig/RenderTramLine" />
+                <setting name="Tram stops" path="./RouteMapConfig/RenderTramStop" />
+            </row>
+            <row id="2">
+                <setting name="Metro lines" path="./RouteMapConfig/RenderMetroLine" />
+                <setting name="Metro stops" path="./RouteMapConfig/RenderMetroStation" />
+            </row>
+            <row id="3">
+                <setting name="Train lines" path="./RouteMapConfig/RenderTrainLine" />
+                <setting name="Train stops" path="./RouteMapConfig/RenderTrainStation" />
+            </row>
+            <row id="4">
+                <setting name="Monorail lines" path="./RouteMapConfig/RenderMonorailLine" />
+                <setting name="Monorail stops" path="./RouteMapConfig/RenderMonorailStation" />
+            </row>
+            <row id="5">
+                <setting name="Blimp lines" path="./RouteMapConfig/RenderBlimpLine" />
+                <setting name="Blimp stops" path="./RouteMapConfig/RenderBlimpStop" />
+            </row>
+            <row id="6">
+                <setting name="Ferry lines" path="./RouteMapConfig/RenderFerryLine" />
+                <setting name="Ferry stops" path="./RouteMapConfig/RenderFerryHarbor" />
+            </row>
+        </labelframe>
+        <labelframe name="Misc">
+            <row>
+                <setting name="Merge bus and tram stops nearby" path="./RouteMapConfig/MergeBusTramStop" />
+            </row>
+            <row id="0">
+                <setting name="Merge train and metro stations nearby" path="./RouteMapConfig/MergeTrainMetroStaion" />
+            </row>
+            <row id="1">
+                <setting name="Auto coloring" path="./RouteMapConfig/AutoColoring" />
+            </row>
+            <row id="2">
+                <setting name="Widen line if paths share same segment" path="./RouteMapConfig/WidenOnSharedLines" />
+            </row>
+            <row id="3">
+                <setting name="Detect end loops" path="./RouteMapConfig/DetectEndLoop" />
+            </row>
+            <row id="4">
+                <setting name="Mark one way routes" path="./RouteMapConfig/MarkOneWayRoutes" />
+            </row>
+            <row id="5">
+                <setting name="Merged route numberings" path="./RouteMapConfig/UseMergedRouteNumberings" />
+            </row>
+        </labelframe>
+    </page>
+</Settings>
