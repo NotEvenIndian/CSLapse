@@ -3,6 +3,9 @@ import xml.etree.ElementTree as ET
 from typing import NamedTuple, Any, List
 import logging
 
+import constants
+from filemanager import resource_path
+
 """
 Module responsible for interacting with the CSLMapView config file.
 
@@ -127,7 +130,7 @@ class Settings():
     def write(self) -> None:
         """Write all local changes to the source file."""
         if self.tree is not None:
-            for setting in self.settings.values():
+            for setting in self.settings:
                 self.tree.find(setting.xmlpath).text = self._to_xml(setting.var.get())
             self.tree.write(self.file)
             self.state_changed = False
@@ -200,5 +203,5 @@ class Layout_loader():
     def get_pages(self) -> List[str]:
         return self.pages
     
-layout_loader = Layout_loader("layout.xml")
+layout_loader = Layout_loader(resource_path(constants.layout_source))
 settings_handler = Settings()
