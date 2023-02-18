@@ -1,6 +1,6 @@
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from typing import NamedTuple, Any
+from typing import NamedTuple, Any, List
 import logging
 
 """
@@ -84,7 +84,7 @@ class Settings():
     """Class handling the external xml settings file."""
 
     def __init__(self, file: Path = None):
-        self.file = Path
+        self.file = file
         self.log = logging.getLogger("xmlparser")
 
         self.tree = None
@@ -96,7 +96,7 @@ class Settings():
             self.log.info(f"Successfully connected settings file {self.file}")
         else:
             self.log.info("Initiated settings object with no file")
-        self.settings = {}
+        self.settings = []
         self.state_changed = False
 
     def set_file(self, file: Path, save_changes: bool = False) -> bool:
@@ -135,28 +135,24 @@ class Settings():
         else:
             self.log.warning("Trying to write with no file")
 
-    def add_variable(self, key: str, var: Any, xmlpath: str, set_var: bool = False) -> None:
+    def add_variable(self, var: Any, xmlpath: str, set_var: bool = False) -> None:
         """
         Add a variable to the settings that can be changed.
 
         var must have a type that supports get() and set() methods
         
-        If set_var is set, set it to the value fund in self.file.
+        If set_var is set, set it to the value found in self.file.
         """
-        self.settings[key] = Local_setting(var, xmlpath)
+        self.settings.append(Local_setting(var, xmlpath))
+        last_index = len(self.settings) - 1
         if set_var:
-            self.settings[key].var.set(self._to_var(self.get(key)))
+            self.settings[last_index].var.set(self._to_var(self.get(last_index)))
 
-    def get(self, setting_key: str) -> Any:
+    def get(self, index: int) -> Any:
         """
-        Return the value associated with setting_key.
-        
-        Raise KeyError if there is no value associated with the key.
+        Return the value at the given index.
         """
-        if setting_key in self.settings:
-            return self._to_var(self.tree.find(self.settings[setting_key].xmlpath).text)
-        else:
-            raise KeyError(f"Key {setting_key} not in settings dictionary")
+        return self._to_var(self.tree.find(self.settings[index].xmlpath).text)
 
     def _to_xml(self, setting: Any) -> str:
         """Change the given setting to the corresponding text in the xml file."""
@@ -184,4 +180,25 @@ class Settings():
         """Return whether the state of some elements is different from the xml file."""
         return self.state_changed
 
+
+class Layout_loader():
+    """Class responsible for reading the layout of settings pages from the xml file."""
+    
+    def __init__(self, file: Path):
+        self.file = file
+        self.log = logging.getLogger("xmlparser")
+
+        self.tree = ET.parse(self.file)
+        self.root = self.tree.getroot()
+        self.log.info(f"Successfully connected layout file {self.file}")
+        
+        self.pages = [page.get("name") for page in self.root]
+
+    def get_page(self, key: str) -> ET.Element:
+        return self.root.find(f"page[@name='{key}']")
+    
+    def get_pages(self) -> List[str]:
+        return self.pages
+    
+layout_loader = Layout_loader("layout.xml")
 settings_handler = Settings()

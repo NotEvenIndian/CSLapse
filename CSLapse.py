@@ -35,6 +35,9 @@ def get_logger_config_dict() -> dict:
             "basic": {
                 "format": "%(asctime)s %(levelname)s [%(name)s/%(threadName)s] %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S"
+            },
+            "debug": {
+                "format": "%(levelname)s  [%(name)s/%(threadName)s] %(message)s"
             }
         },
         "handlers":{
@@ -45,6 +48,12 @@ def get_logger_config_dict() -> dict:
                 "filename": "./cslapse.log",
                 "maxBytes": 200000,
                 "backupCount": 1
+            },
+            "debugfile": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "level": logging.DEBUG,
+                "formatter": "debug",
+                "filename": "./debug.log",
             }
         },
         "loggers":{
@@ -65,8 +74,8 @@ def get_logger_config_dict() -> dict:
                 "handlers": ["logfile"]
             },
             "xmlparser": {
-                "level": logging.INFO,
-                "handlers": ["logfile"]
+                "level": logging.DEBUG,
+                "handlers": ["logfile", "debugfile"]
             }
         }
     }
@@ -361,7 +370,6 @@ class App():
         callbacks = self.register_callbacks()
 
         self.exporter = Exporter(self.lock)
-        self.settings = settings.settings_handler
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
         
@@ -495,7 +503,7 @@ class App():
         while True:
             try:
                 xml_file = Path(directory, constants.xml_file_name)
-                self.settings.set_file(xml_file)
+                settings.settings_handler.set_file(xml_file)
                 return True
             except Exception as e:
                 if ask_non_fatal_error(f"Could not load settings file {xml_file}.\n{str(e)}"):
@@ -981,7 +989,7 @@ class CSLapse_window():
         self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
-        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in settings.settings]
+        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in settings.layout_loader.get_pages()]
         return [
             self.pages_frame,
             self.main_frame,
@@ -1583,7 +1591,7 @@ class Settings_page(Content_frame):
             self._hide_widgets(self.no_file_frame, self.settings_frame)
             self._show_widgets(self.xml_error_frame)
 
-    def _load_settings(self) -> None:
+    def _load_settings_(self) -> None:
         """Delete the setting widgets and create new one with state set to the value loaded from file."""
         for child in self.settings_frame.winfo_children():
             child.destroy()
@@ -1605,6 +1613,29 @@ class Settings_page(Content_frame):
         save_btn.grid(row = frame_row + 1, column = 0, sticky = tkinter.EW)
 
         self.settings_frame.rowconfigure(frame_row, weight = 1)
+
+    def _load_settings(self) -> None:
+        """Delete the setting widgets and create new ones with state set to the value loaded from file."""
+        for child in self.settings_frame.winfo_children():
+            child.destroy()
+        
+        for subframe in settings.layout_loader.get_page(self.key):
+            labelframe = ttk.Labelframe(self.settings_frame, text = subframe.get("name"))
+            labelframe.grid(row = int(subframe.get("row")), column = 0, sticky = tkinter.EW)
+            for widget in subframe:
+                if widget.tag == "setting":
+                    var = tkinter.IntVar()
+                    settings.settings_handler.add_variable(var, widget.get("path"), True)
+                    if widget.get("type") == "checkbutton":
+                        w = ttk.Checkbutton(labelframe, text = widget.get("name"), variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = lambda: settings.settings_handler.change_state())
+                elif widget.tag == "label":
+                    w = ttk.Label(labelframe, text = widget.get("name"))
+
+                w.grid(row = widget.get("row"), column = widget.get("column", 0), sticky = tkinter.W)
+                    
+            
+            
+
 
 class Preview():
     """ Object that handles the preview functionaltiy in the GUI"""
@@ -1819,7 +1850,7 @@ class Preview():
             if new_areas is not None:
                 self.printarea.resize(self.imageWidth, self.imageHeight, self.previewAreas, new_areas)
             self.printarea.move(self.fullWidth, self.fullHeight, self.imageX, self.imageY, self.scaleFactor)
-        
+
 
 def main() -> None:
     log = logging.getLogger("root")
