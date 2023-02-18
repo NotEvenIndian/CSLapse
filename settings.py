@@ -18,70 +18,74 @@ and the settings_handler object that can manipulate data and the file.
 class Xml_setting(NamedTuple):
     text: str
     xmlpath: str
+
+
 class Local_setting(NamedTuple):
     var: Any
     xmlpath: str
 
+
 settings = {
-        "drawing_target": {
-            "Elements": {
-                "Terrain": Xml_setting("Terrain", "./RenderTerrain"),
-                "Forest": Xml_setting("Forest", "./RenderForest"),
-                "Buildings": Xml_setting("Buildings", "./RenderBuilding"),
-                "Roads": Xml_setting("Roads", "./RenderRoad"),
-                "Railways": Xml_setting("Railways", "./RenderRail")
-            },
-            "Rail lines": {
-                "Train": Xml_setting("Train", "./RenderRailTrain"),
-                "Tram": Xml_setting("Tram", "./RenderRailTram"),
-                "Metro": Xml_setting("Metro", "./RenderRailMetro"),
-                "Monorail": Xml_setting("Monorail", "./RenderRailMonorail"),
-                "Cable car": Xml_setting("Cable car", "./RenderRailCableCar")
-            },
-            "Overlay": {
-                "Grid": Xml_setting("Grid", "./RenderGrid"),
-                "Districts": Xml_setting("District names", "./RenderDistrictName"),
-                "Building names": Xml_setting("Building names", "./RenderBuildingName"),
-                "Map symbols": Xml_setting("Map symbols", "./RenderMapSymbol"),
-                "Road names": Xml_setting("Road names", "./RenderRoadName"),
-                "Park names": Xml_setting("Park names", "./RenderParkName")
-            }
-
+    "drawing_target": {
+        "Elements": {
+            "Terrain": Xml_setting("Terrain", "./RenderTerrain"),
+            "Forest": Xml_setting("Forest", "./RenderForest"),
+            "Buildings": Xml_setting("Buildings", "./RenderBuilding"),
+            "Roads": Xml_setting("Roads", "./RenderRoad"),
+            "Railways": Xml_setting("Railways", "./RenderRail")
         },
-        "public_transport": {
-            "General": {
-                "transport_routes": Xml_setting("Public transport routes", "./RenderTransportRoute"),
-                "route_numbering": Xml_setting("Route numberigs", "./RenderTransport")
-            },
-            "Lines and stops": {
-                "Bus lines": Xml_setting("Bus lines", "./RouteMapConfig/RenderBusLine"),
-                "Bus stops": Xml_setting("Bus stops", "./RouteMapConfig/RenderBusStop"),
-                "Tram lines": Xml_setting("Tram lines", "./RouteMapConfig/RenderTramLine"),
-                "Tram stops": Xml_setting("Tram stops", "./RouteMapConfig/RenderTramStop"),
-                "Metro lines": Xml_setting("Metro lines", "./RouteMapConfig/RenderMetroLine"),
-                "Metro stops": Xml_setting("Metro stops", "./RouteMapConfig/RenderMetroStation"),
-                "Train lines": Xml_setting("Train lines", "./RouteMapConfig/RenderTrainLine"),
-                "Train stops": Xml_setting("Train stops", "./RouteMapConfig/RenderTrainStation"),
-                "Monorail lines": Xml_setting("Monorail lines", "./RouteMapConfig/RenderMonorailLine"),
-                "Monorail stops": Xml_setting("Monorail stops", "./RouteMapConfig/RenderMonorailStation"),
-                "Blimp lines": Xml_setting("Blimp lines", "./RouteMapConfig/RenderBlimpLine"),
-                "Blimp stops": Xml_setting("Blimp stops", "./RouteMapConfig/RenderBlimpStop"),
-                "Ferry lines": Xml_setting("Ferry lines", "./RouteMapConfig/RenderFerryLine"),
-                "Ferry stops": Xml_setting("Ferry stops", "./RouteMapConfig/RenderFerryHarbor")
-            },
-            "Misc": {
-                "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RouteMapConfig/MergeBusTramStop"),
-                "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RouteMapConfig/MergeTrainMetroStaion"),
-                "auto_color": Xml_setting("Auto coloring", "./RouteMapConfig/AutoColoring"),
-                "widen_line": Xml_setting("Widen line if paths share same segment", "./RouteMapConfig/WidenOnSharedLines"),
-                "detect_end_loops": Xml_setting("Detect end loops", "./RouteMapConfig/DetectEndLoop"),
-                "mark_one_way": Xml_setting("Mark one way routes", "./RouteMapConfig/MarkOneWayRoutes"),
-                "merged_numbering": Xml_setting("Merged route numberings", "./RouteMapConfig/UseMergedRouteNumberings")
-            }
+        "Rail lines": {
+            "Train": Xml_setting("Train", "./RenderRailTrain"),
+            "Tram": Xml_setting("Tram", "./RenderRailTram"),
+            "Metro": Xml_setting("Metro", "./RenderRailMetro"),
+            "Monorail": Xml_setting("Monorail", "./RenderRailMonorail"),
+            "Cable car": Xml_setting("Cable car", "./RenderRailCableCar")
+        },
+        "Overlay": {
+            "Grid": Xml_setting("Grid", "./RenderGrid"),
+            "Districts": Xml_setting("District names", "./RenderDistrictName"),
+            "Building names": Xml_setting("Building names", "./RenderBuildingName"),
+            "Map symbols": Xml_setting("Map symbols", "./RenderMapSymbol"),
+            "Road names": Xml_setting("Road names", "./RenderRoadName"),
+            "Park names": Xml_setting("Park names", "./RenderParkName")
+        }
 
+    },
+    "public_transport": {
+        "General": {
+            "transport_routes": Xml_setting("Public transport routes", "./RenderTransportRoute"),
+            "route_numbering": Xml_setting("Route numberigs", "./RenderTransport")
+        },
+        "Lines and stops": {
+            "Bus lines": Xml_setting("Bus lines", "./RouteMapConfig/RenderBusLine"),
+            "Bus stops": Xml_setting("Bus stops", "./RouteMapConfig/RenderBusStop"),
+            "Tram lines": Xml_setting("Tram lines", "./RouteMapConfig/RenderTramLine"),
+            "Tram stops": Xml_setting("Tram stops", "./RouteMapConfig/RenderTramStop"),
+            "Metro lines": Xml_setting("Metro lines", "./RouteMapConfig/RenderMetroLine"),
+            "Metro stops": Xml_setting("Metro stops", "./RouteMapConfig/RenderMetroStation"),
+            "Train lines": Xml_setting("Train lines", "./RouteMapConfig/RenderTrainLine"),
+            "Train stops": Xml_setting("Train stops", "./RouteMapConfig/RenderTrainStation"),
+            "Monorail lines": Xml_setting("Monorail lines", "./RouteMapConfig/RenderMonorailLine"),
+            "Monorail stops": Xml_setting("Monorail stops", "./RouteMapConfig/RenderMonorailStation"),
+            "Blimp lines": Xml_setting("Blimp lines", "./RouteMapConfig/RenderBlimpLine"),
+            "Blimp stops": Xml_setting("Blimp stops", "./RouteMapConfig/RenderBlimpStop"),
+            "Ferry lines": Xml_setting("Ferry lines", "./RouteMapConfig/RenderFerryLine"),
+            "Ferry stops": Xml_setting("Ferry stops", "./RouteMapConfig/RenderFerryHarbor")
+        },
+        "Misc": {
+            "merge_bus_tram": Xml_setting("Merge bus and tram stops nearby", "./RouteMapConfig/MergeBusTramStop"),
+            "merge_train_metro": Xml_setting("Merge train and metro stations nearby", "./RouteMapConfig/MergeTrainMetroStaion"),
+            "auto_color": Xml_setting("Auto coloring", "./RouteMapConfig/AutoColoring"),
+            "widen_line": Xml_setting("Widen line if paths share same segment", "./RouteMapConfig/WidenOnSharedLines"),
+            "detect_end_loops": Xml_setting("Detect end loops", "./RouteMapConfig/DetectEndLoop"),
+            "mark_one_way": Xml_setting("Mark one way routes", "./RouteMapConfig/MarkOneWayRoutes"),
+            "merged_numbering": Xml_setting("Merged route numberings", "./RouteMapConfig/UseMergedRouteNumberings")
         }
 
     }
+
+}
+
 
 class Settings():
     """Class handling the external xml settings file."""
@@ -105,7 +109,7 @@ class Settings():
     def set_file(self, file: Path, save_changes: bool = False) -> bool:
         """
         Change the used file to file.
-        
+
         If save_changes is True, write the changes to the old file before closing.
         Return whether the file was successfully changed.
         """
@@ -115,7 +119,8 @@ class Settings():
                     if self.file is not None:
                         self.write()
                     else:
-                        self.log.warning("Trying to save settings with no file")
+                        self.log.warning(
+                            "Trying to save settings with no file")
             assert file.exists()
             self.file = file
             self.tree = ET.parse(self.file)
@@ -124,14 +129,16 @@ class Settings():
             self.log.info(f"Successfully connected settings file {self.file}")
             return True
         except Exception as e:
-            self.log.exception("An exception occoured while trying to assign file")
+            self.log.exception(
+                "An exception occoured while trying to assign file")
             raise
 
     def write(self) -> None:
         """Write all local changes to the source file."""
         if self.tree is not None:
             for setting in self.settings:
-                self.tree.find(setting.xmlpath).text = self._to_xml(setting.var.get())
+                self.tree.find(setting.xmlpath).text = self._to_xml(
+                    setting.var.get())
             self.tree.write(self.file)
             self.state_changed = False
             self.log.info("Changes written to file")
@@ -143,13 +150,14 @@ class Settings():
         Add a variable to the settings that can be changed.
 
         var must have a type that supports get() and set() methods
-        
+
         If set_var is set, set it to the value found in self.file.
         """
         self.settings.append(Local_setting(var, xmlpath))
         last_index = len(self.settings) - 1
         if set_var:
-            self.settings[last_index].var.set(self._to_var(self.get(last_index)))
+            self.settings[last_index].var.set(
+                self._to_var(self.get(last_index)))
 
     def get(self, index: int) -> Any:
         """
@@ -186,7 +194,7 @@ class Settings():
 
 class Layout_loader():
     """Class responsible for reading the layout of settings pages from the xml file."""
-    
+
     def __init__(self, file: Path):
         self.file = file
         self.log = logging.getLogger("xmlparser")
@@ -194,14 +202,15 @@ class Layout_loader():
         self.tree = ET.parse(self.file)
         self.root = self.tree.getroot()
         self.log.info(f"Successfully connected layout file {self.file}")
-        
+
         self.pages = [page.get("name") for page in self.root]
 
     def get_page(self, key: str) -> ET.Element:
         return self.root.find(f"page[@name='{key}']")
-    
+
     def get_pages(self) -> List[str]:
         return self.pages
-    
+
+
 layout_loader = Layout_loader(resource_path(constants.layout_source))
 settings_handler = Settings()
