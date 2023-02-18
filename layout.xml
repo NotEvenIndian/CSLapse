@@ -7,17 +7,9 @@ Settings: root element
                 `type` is the type of widget (checkbox or integer)
                 `xmlpath` is the path to the setting in the CSLMapViewConfig.xml file
             label: label shown in the application
+            future: functionality not implemented yet
 -->
 <Settings>
-    <page name="Test">
-        <labelframe name="Elements" row="0">
-            <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
-            <setting name="Forest" path="./RenderForest" type="checkbutton" row="1" />
-            <setting name="Buildings" path="./RenderBuilding" type="checkbutton" row="2" />
-            <setting name="Roads" path="./RenderRoad" type="checkbutton" row="3" />
-            <setting name="Railways" path="./RenderRail" type="checkbutton" row="4" />
-        </labelframe>
-    </page>
     <page name="Elements">
         <labelframe name="Elements" row="0">
             <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
@@ -37,15 +29,19 @@ Settings: root element
             <setting name="Grid" path="./RenderGrid" type="checkbutton" row="0" />
             <setting name="District names" path="./RenderDistrictName" type="checkbutton" row="1" />
             <setting name="Building names" path="./RenderBuildingName" type="checkbutton" row="2" />
-            <setting name="Map symbols" path="./RenderMapSymbol" type="checkbutton" row="3" />
-            <setting name="Road names" path="./RenderRoadName" type="checkbutton" row="4" />
-            <setting name="Park names" path="./RenderParkName" type="checkbutton" row="5" />
+            <setting name="Disable building frame" path="./DisableBuildingBorder" type="checkbutton" row="3" />
+            <setting name="Hide R/I/C/O buildings" path="./HideRICO" type="checkbutton" row="3" />
+            <setting name="Map symbols" path="./RenderMapSymbol" type="checkbutton" row="5" />
+            <setting name="Road names" path="./RenderRoadName" type="checkbutton" row="6" />
+            <setting name="Park names" path="./RenderParkName" type="checkbutton" row="7" />
         </labelframe>
     </page>
     <page name="Public transport">
         <labelframe name="General" row="0">
             <setting name="Public transport routes" path="./RenderTransportRoute" type="checkbutton" row="0" />
             <setting name="Route numberigs" path="./RenderTransport" type="checkbutton" row="1" />
+            <future name="Merge stops/stations within (m)" path="./RenderTransport" type="integer" row="2" />
+            
         </labelframe>
         <labelframe name="Lines and stops" row="1">
             <setting name="Bus lines" path="./RouteMapConfig/RenderBusLine" type="checkbutton" row="0" column="0" />
@@ -73,13 +69,16 @@ Settings: root element
             <setting name="Merged route numberings" path="./RouteMapConfig/UseMergedRouteNumberings" type="checkbutton" row="6" />
         </labelframe>
     </page>
-    <page name="Test2">
-        <labelframe name="Elements" row="0">
-            <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
-            <setting name="Forest" path="./RenderForest" type="checkbutton" row="1" />
-            <setting name="Buildings" path="./RenderBuilding" type="checkbutton" row="2" />
-            <setting name="Roads" path="./RenderRoad" type="checkbutton" row="3" />
-            <setting name="Railways" path="./RenderRail" type="checkbutton" row="4" />
+    <page name="Miscallenous">
+        <labelframe name="Terrain" row="0">
+            <setting name="Use vectorized terrain" path="./UseVectorTerrain" type="checkbutton" row="0" />
+            <setting name="Display contour lines (only available in vectorized terrain mode)" path="./DisplayContourLines" type="checkbutton" row="1" />
+            <future name="Interval of altitude" path="./ContourIntervals" type="menu" row="2" />
+            <future name="Max parallelism for contour calculation" path="./MaxParallelism" type="integer" row="3" />
+        </labelframe>
+        <labelframe name="Other" row="1">
+            <future name="Map style" path="./." type="menu" row="0" />
+            <setting name="Disable bitmap cache" path="./DisableBitmapCache" type="checkbutton" row="1" />
         </labelframe>
     </page>
 </Settings>
