@@ -75,7 +75,7 @@ def get_logger_config_dict() -> dict:
             },
             "xmlparser": {
                 "level": logging.DEBUG,
-                "handlers": ["logfile", "debugfile"]
+                "handlers": ["logfile"]
             }
         }
     }
@@ -253,6 +253,7 @@ class constants:
     defaultAreas = 9.0
     noFileText = "No file selected"
     rotaOptions = ["0°", "90°", "180°", "270°"]
+    main_page = "general_page"
     pages = ["general_page", "drawing_target", "public_transport", "terrain_page"]
     class texts:
         openExeTitle = "Select CSLMapViewer.exe"
@@ -327,6 +328,7 @@ def ask_save_settings(function: Callable):
         function(*args, **kwargs)
 
     return wrapper
+
 
 class App():
     """Class overlooking everything - the gui, the variables, the constants and more."""
@@ -562,7 +564,7 @@ class App():
             "areas_entered": self.root.register(self.areas_entered),
             "areas_changed": self.areas_changed,
             "refresh_preview": self.refresh_pressed,
-            "set_page": self.set_page
+            "set_page": lambda new_state: self.window.set_state(new_state)
         }
         return callbacks
 
@@ -663,9 +665,6 @@ class App():
             events.abort.set()
             events.close.set()
             self.root.destroy()
-
-    def set_page(self, page_num: int) -> None:
-        self.window.set_state(constants.pages[page_num])
 
 
 class Exporter():
@@ -989,7 +988,7 @@ class CSLapse_window():
         self.pages_frame = Pages_frame(self.root, vars, callbacks)
         self.preview_frame = Preview_frame(self.root, vars, callbacks)
         self.main_frame = Main_frame(self.root, vars, callbacks)
-        setting_frames = [Settings_page(self.root, vars, callbacks, key) for key in settings.layout_loader.get_pages()]
+        setting_frames = [Settings_page(self.root, vars, callbacks, page) for page in settings.layout_loader.get_pages()]
         return [
             self.pages_frame,
             self.main_frame,
@@ -1064,7 +1063,6 @@ class CSLapse_window():
     def set_video_limit(self, limit: int) -> None:
         """Set the size of the progressbar for video frames."""
         self.main_frame.set_video_limit(limit)
-
 
 class Content_frame(ABC):
     """A Frame widget that encloses a section of the gui that is shown or hidden together."""
@@ -1512,39 +1510,47 @@ class Pages_frame(Content_frame):
         """Create the widgets contained in the pages frame."""
         self.general_label = ttk.Label(self.frame, text = "General", cursor = constants.clickable, background = constants.active_page_color)
         self.drawing_target_label = ttk.Label(self.frame, text = "Drawing targets", cursor = constants.clickable, background = constants.inactive_page_color)
-        self.public_transport_label = ttk.Label(self.frame, text = "Public transport", cursor = constants.clickable, background = constants.inactive_page_color)
-        self.terrain_label = ttk.Label(self.frame, text = "Terrain", cursor = constants.clickable, background = constants.inactive_page_color)
-
+        self.settings_labels = [
+            ttk.Label(self.frame, text = page, cursor = constants.clickable, background = constants.inactive_page_color)
+            for page in settings.layout_loader.get_pages()
+        ]
+        
     def _grid(self) -> None:
         """Grid the widgets contained in the pages frame."""
         self.frame.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2, pady = 5)
         self.general_label.grid(column = 0, row = 0, sticky = tkinter.NSEW, padx = 2)
-        self.drawing_target_label.grid(column = 1, row = 0, sticky = tkinter.NSEW, padx = 2)
-        self.public_transport_label.grid(column = 2, row = 0, sticky = tkinter.NSEW, padx = 2)
-        self.terrain_label.grid(column = 3, row = 0, sticky = tkinter.NSEW, padx = 2)
+        for i, label in enumerate(self.settings_labels):
+            label.grid(column = i + 1, row = 0, sticky = tkinter.NSEW, padx = 2)
 
     def _create_bindings(self, callbacks: dict) -> None:
         """Bind events to widgets in the main frame."""
-        self.general_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](0))
-        self.drawing_target_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](1))
-        self.public_transport_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](2))
-        self.terrain_label.bind('<ButtonPress-1>', lambda event: callbacks["set_page"](3))
+        self.general_label.bind('<ButtonPress-1>', lambda event, cb = callbacks: cb["set_page"](constants.main_page))
+        for widget in self.settings_labels:
+            # This doesn't work if the lambda doesn't get the page as kwarg.
+            # That way when the events fire and the lambda is run, all the widgets fire the exact same event, the one that was last bound
+            widget.bind('<ButtonPress-1>', lambda event, page = widget["text"]: callbacks["set_page"](page))
 
     def _configure(self) -> None:
         self.frame.columnconfigure(100, weight = 1)
 
     def set_state(self, state: str) -> None:
-        """Set options for the wisgets in the main frame."""
-        if state in constants.pages:
+        """Set options for the widgets in the main frame."""
+        if state == constants.main_page:
             for w in self.frame.winfo_children():
                 w.configure(background = constants.inactive_page_color)
-            self.frame.winfo_children()[constants.pages.index(state)].configure(background = constants.active_page_color)
-
+            self.general_label.configure(background = constants.active_page_color)
+        elif state in settings.layout_loader.get_pages():
+            for w in self.frame.winfo_children():
+                if w["text"] == state:
+                    w.configure(background = constants.active_page_color)
+                else:
+                    w.configure(background = constants.inactive_page_color)
+                
 class Settings_page(Content_frame):
 
-    def __init__(self, parent: tkinter.Widget, vars: dict, callbacks: dict, key: str) -> None:
+    def __init__(self, parent: tkinter.Widget, vars: dict, callbacks: dict, page: str) -> None:
         super().__init__(parent, vars, callbacks)
-        self.key = key
+        self.page = page
 
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the non-setting widgets contained in the frame."""
@@ -1579,9 +1585,9 @@ class Settings_page(Content_frame):
 
     def set_state(self, state: str) -> None:
         """Set options for the widgets in the frame."""
-        if state == self.key:
+        if state == self.page:
             self.show()
-        elif state in constants.pages:
+        elif state in settings.layout_loader.get_pages():
             self.hide()
         elif state == "xml_loaded":
             self._load_settings()
@@ -1591,35 +1597,12 @@ class Settings_page(Content_frame):
             self._hide_widgets(self.no_file_frame, self.settings_frame)
             self._show_widgets(self.xml_error_frame)
 
-    def _load_settings_(self) -> None:
-        """Delete the setting widgets and create new one with state set to the value loaded from file."""
-        for child in self.settings_frame.winfo_children():
-            child.destroy()
-
-        frame_row = 0
-        for name, contents in settings.settings[self.key].items():
-            labelframe = ttk.Labelframe(self.settings_frame, text = name)
-            labelframe.grid(row = frame_row, column = 0, sticky = tkinter.EW)
-            row = 0
-            for key, setting in contents.items():
-                var = tkinter.IntVar()
-                settings.settings_handler.add_variable(key, var, setting.xmlpath, True)
-                cb = ttk.Checkbutton(labelframe, text = setting.text, variable = var, onvalue = 1, offvalue = 0, cursor = constants.clickable, command = lambda: settings.settings_handler.change_state())
-                cb.grid(row = row, column = 0, sticky = tkinter.W)
-                row += 1
-            frame_row += 1
-        
-        save_btn = ttk.Button(self.settings_frame, text = "Save changes", cursor = constants.clickable, command = lambda: settings.settings_handler.write())
-        save_btn.grid(row = frame_row + 1, column = 0, sticky = tkinter.EW)
-
-        self.settings_frame.rowconfigure(frame_row, weight = 1)
-
     def _load_settings(self) -> None:
         """Delete the setting widgets and create new ones with state set to the value loaded from file."""
         for child in self.settings_frame.winfo_children():
             child.destroy()
         
-        for subframe in settings.layout_loader.get_page(self.key):
+        for subframe in settings.layout_loader.get_page(self.page):
             labelframe = ttk.Labelframe(self.settings_frame, text = subframe.get("name"))
             labelframe.grid(row = int(subframe.get("row")), column = 0, sticky = tkinter.EW)
             for widget in subframe:

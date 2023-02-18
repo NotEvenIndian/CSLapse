@@ -9,7 +9,16 @@ Settings: root element
             label: label shown in the application
 -->
 <Settings>
-    <page name="drawing_target">
+    <page name="Test">
+        <labelframe name="Elements" row="0">
+            <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
+            <setting name="Forest" path="./RenderForest" type="checkbutton" row="1" />
+            <setting name="Buildings" path="./RenderBuilding" type="checkbutton" row="2" />
+            <setting name="Roads" path="./RenderRoad" type="checkbutton" row="3" />
+            <setting name="Railways" path="./RenderRail" type="checkbutton" row="4" />
+        </labelframe>
+    </page>
+    <page name="Elements">
         <labelframe name="Elements" row="0">
             <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
             <setting name="Forest" path="./RenderForest" type="checkbutton" row="1" />
@@ -33,7 +42,7 @@ Settings: root element
             <setting name="Park names" path="./RenderParkName" type="checkbutton" row="5" />
         </labelframe>
     </page>
-    <page name="public_transport">
+    <page name="Public transport">
         <labelframe name="General" row="0">
             <setting name="Public transport routes" path="./RenderTransportRoute" type="checkbutton" row="0" />
             <setting name="Route numberigs" path="./RenderTransport" type="checkbutton" row="1" />
@@ -62,6 +71,15 @@ Settings: root element
             <setting name="Detect end loops" path="./RouteMapConfig/DetectEndLoop" type="checkbutton" row="4" />
             <setting name="Mark one way routes" path="./RouteMapConfig/MarkOneWayRoutes" type="checkbutton" row="5" />
             <setting name="Merged route numberings" path="./RouteMapConfig/UseMergedRouteNumberings" type="checkbutton" row="6" />
+        </labelframe>
+    </page>
+    <page name="Test2">
+        <labelframe name="Elements" row="0">
+            <setting name="Terrain" path="./RenderTerrain" type="checkbutton" row="0" />
+            <setting name="Forest" path="./RenderForest" type="checkbutton" row="1" />
+            <setting name="Buildings" path="./RenderBuilding" type="checkbutton" row="2" />
+            <setting name="Roads" path="./RenderRoad" type="checkbutton" row="3" />
+            <setting name="Railways" path="./RenderRail" type="checkbutton" row="4" />
         </labelframe>
     </page>
 </Settings>
