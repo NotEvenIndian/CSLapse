@@ -8,7 +8,7 @@ a = Analysis(
     ['CSLapse.py'],
     pathex=[],
     binaries=[],
-    datas=[('media', 'media')],
+    datas=[('media', 'media'), ('layout.xml', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

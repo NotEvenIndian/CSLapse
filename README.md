@@ -36,14 +36,13 @@ You might want to build the software from source. For this you will need git and
 ```git clone https://github.com/NotEvenIndian/CSLapse.git```
 3. ```cd CSLapse```
 4. Install the requirements
-```pip install requirements.txt```
+```python3 -m pip install -r requirements.txt```
 5. Build the application
 ```pyinstaller CSLapse.spec```
 
 Your executable will be generated in the dist folder.
 
 # TODO:
-* Add GUI to edit settings of CSLMapViewConfig.xml
 * Extend documentation
 * (maybe) support different filetypes
 

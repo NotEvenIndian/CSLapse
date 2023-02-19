@@ -29,11 +29,12 @@ Settings: root element
             <setting name="Grid" path="./RenderGrid" type="checkbutton" row="0" />
             <setting name="District names" path="./RenderDistrictName" type="checkbutton" row="1" />
             <setting name="Building names" path="./RenderBuildingName" type="checkbutton" row="2" />
-            <setting name="Disable building frame" path="./DisableBuildingBorder" type="checkbutton" row="3" />
-            <setting name="Hide R/I/C/O buildings" path="./HideRICO" type="checkbutton" row="3" />
-            <setting name="Map symbols" path="./RenderMapSymbol" type="checkbutton" row="5" />
-            <setting name="Road names" path="./RenderRoadName" type="checkbutton" row="6" />
-            <setting name="Park names" path="./RenderParkName" type="checkbutton" row="7" />
+            <setting name="Reduce contrast" path="./ReduceContrast" type="checkbutton" row="3" />
+            <setting name="Disable building frame" path="./DisableBuildingBorder" type="checkbutton" row="4" />
+            <setting name="Hide R/I/C/O buildings" path="./HideRICO" type="checkbutton" row="5" />
+            <setting name="Map symbols" path="./RenderMapSymbol" type="checkbutton" row="6" />
+            <setting name="Road names" path="./RenderRoadName" type="checkbutton" row="7" />
+            <setting name="Park names" path="./RenderParkName" type="checkbutton" row="8" />
         </labelframe>
     </page>
     <page name="Public transport">

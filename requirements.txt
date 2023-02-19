@@ -1,10 +1,13 @@
 altgraph==0.17.3
+autopep8==2.0.1
 easygui==0.98.3
 future==0.18.3
 numpy==1.24.1
 opencv-python==4.7.0.68
 pefile==2022.5.30
 Pillow==9.4.0
+pycodestyle==2.10.0
 pyinstaller==5.7.0
 pyinstaller-hooks-contrib==2022.15
 pywin32-ctypes==0.2.0
+tomli==2.0.1

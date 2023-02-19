@@ -34,7 +34,7 @@ class ExportError(Exception):
     pass
 
 
-def get_logger_config_dict() -> dict:
+def get_logger_config_dict(debug: bool = False) -> dict:
     """Return the logger configuration dictionary."""
     dictionary = {
         "version": 1,
@@ -55,12 +55,6 @@ def get_logger_config_dict() -> dict:
                 "filename": "./cslapse.log",
                 "maxBytes": 200000,
                 "backupCount": 1
-            },
-            "debugfile": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "level": logging.DEBUG,
-                "formatter": "debug",
-                "filename": "./debug.log",
             }
         },
         "loggers": {
@@ -86,6 +80,14 @@ def get_logger_config_dict() -> dict:
             }
         }
     }
+    
+    if debug:
+        dictionary["handlers"]["debugfile"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": logging.DEBUG,
+            "formatter": "debug",
+            "filename": "./debug.log",
+        }
 
     return dictionary
 
@@ -1077,6 +1079,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.config.dictConfig(get_logger_config_dict())
+    debug = False
+    gettrace = getattr(sys, 'gettrace', None)
+    if gettrace is not None and gettrace():
+        debug = True
+    logging.config.dictConfig(get_logger_config_dict(debug))
     current_directory = Path(__file__).parent.resolve()  # current directory
     main()
