@@ -103,6 +103,14 @@ class Preview():
             self.canvas.coords(self.border, canvasLeft,
                                canvasTop, canvasRight, canvasBottom)
 
+        def get_width(self) -> float:
+            """Get width of printare in pixels."""
+            return self.width
+        
+        def get_height(self) -> float:
+            """Get height of printare in pixels."""
+            return self.height
+
     def __init__(self, parentFrame: tkinter.Widget, default_image: Path):
         self.canvas = tkinter.Canvas(parentFrame, cursor="")
         self.active = False
@@ -154,8 +162,8 @@ class Preview():
 
     def fitToCanvas(self) -> None:
         """Resize activeImage so that it touches the borders of canvas and the full image is visible, keep aspect ratio."""
-        newScaleFactor = min(self.fullWidth / self.imageWidth,
-                             self.fullHeight / self.imageHeight)
+        newScaleFactor = min(self.fullWidth / self.printarea.get_width(),
+                             self.fullHeight / self.printarea.get_height())
         self.resizeImage(newScaleFactor)
         self.canvas.moveto(self.activeImage, x=(self.fullWidth-int(self.imageWidth * self.scaleFactor)
                                                 ) / 2, y=(self.fullHeight-int(self.imageHeight * self.scaleFactor)) / 2)
@@ -183,7 +191,6 @@ class Preview():
             self.activeImage = self.canvas.create_image(
                 0, 0, anchor=tkinter.CENTER, image=self.preview_image, tags="activeImage")
 
-        self.fitToCanvas()
 
         self.active = True
         self.canvas.itemconfigure("placeholder", state="hidden")
@@ -191,6 +198,8 @@ class Preview():
         self.update_printarea(current_areas if current_areas is not None else self.previewAreas)
         self.printarea.raise_above("activeImage")
         self.printarea.show()
+        
+        self.fitToCanvas()
 
     def resized(self, event: tkinter.Event) -> None:
         """Handle change in the canvas's size."""
