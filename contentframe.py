@@ -360,7 +360,7 @@ class Preview_frame(Content_frame):
         """Create the widgets contained in the preview frame."""
         self.canvasFrame = ttk.Frame(
             self.frame, relief=tkinter.SUNKEN, borderwidth=2)
-        self.preview = Preview(self.frame)
+        self.preview = Preview(self.frame, constants.no_preview_image)
         self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text="Refresh", cursor=constants.clickable,
                                             command=lambda: callbacks["refresh_preview"]())
         self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text="Fit", cursor=constants.clickable,

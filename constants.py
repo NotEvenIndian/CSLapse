@@ -5,7 +5,7 @@ sampleExportWidth = 2000
 defaultFPS = 24
 defaultExportWidth = 2000
 defaultThreads = 6
-defaultRetry = 15
+defaultRetry = 5
 defaultAreas = 9.0
 noFileText = "No file selected"
 rotaOptions = ["0°", "90°", "180°", "270°"]
@@ -41,7 +41,7 @@ inactive_page_color = "#dddddd"
 active_page_color = "#eeeeee"
 clickable = "hand2"
 preview_cursor = "fleur"
-noPreviewImage = "media/NOIMAGE.png"
+no_preview_image = "media/NOIMAGE.png"
 layout_source = "layout.xml"
 sampleCommand = ["__exeFile__", "__source_file__", "-output",
                  "__outFile__", "-silent", "-imagewidth", "2000", "-area", "9"]

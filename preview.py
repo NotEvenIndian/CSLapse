@@ -2,7 +2,7 @@ import tkinter
 from tkinter import ttk
 from PIL import ImageTk, Image
 
-import constants
+from pathlib import Path
 from filemanager import resource_path
 
 """
@@ -103,7 +103,7 @@ class Preview():
             self.canvas.coords(self.border, canvasLeft,
                                canvasTop, canvasRight, canvasBottom)
 
-    def __init__(self, parentFrame: tkinter.Widget):
+    def __init__(self, parentFrame: tkinter.Widget, default_image: Path):
         self.canvas = tkinter.Canvas(parentFrame, cursor="")
         self.active = False
 
@@ -122,7 +122,7 @@ class Preview():
         self.scaleFactor = 1  # Conversion factor: canvas pixels / original image pixels
 
         self.placeholderImage = ImageTk.PhotoImage(
-            Image.open(resource_path(constants.noPreviewImage)))
+            Image.open(resource_path(default_image)))
         self.canvas.create_image(
             0, 0, image=self.placeholderImage, tags="placeholder")
 
@@ -168,16 +168,11 @@ class Preview():
         """Rescale to the original size of the preview image."""
         self.resizeImage(1)
 
-    def justExported(self, image_source, width: int, areas: float) -> None:
+    def justExported(self, image_source, exported_width: int, exported_areas: float, current_areas: float = None) -> None:
         """Show newly exported preview image."""
-        self.imageWidth = width
-        self.imageHeight = width
-
-        self.previewAreas = areas
-        self.printAreaX = 0
-        self.printAreaW = width
-        self.printAreaY = 0
-        self.printAreaH = width
+        self.imageWidth = exported_width
+        self.imageHeight = exported_width
+        self.previewAreas = exported_areas
 
         self.image_source = image_source
         self.preview_image = ImageTk.PhotoImage(image_source)
@@ -193,7 +188,7 @@ class Preview():
         self.active = True
         self.canvas.itemconfigure("placeholder", state="hidden")
 
-        self.update_printarea(self.previewAreas)
+        self.update_printarea(current_areas if current_areas is not None else self.previewAreas)
         self.printarea.raise_above("activeImage")
         self.printarea.show()
 

@@ -346,8 +346,6 @@ class App():
         """Check if the threading events are set, repeat after 100 ms."""
         if events.preview_loaded.is_set():
             events.preview_loaded.clear()
-            self.preview.justExported(self.vars["preview_source"], int(
-                self.vars["width"].get()), float(self.vars["areas"].get()))
             self.window.set_state("preview_loaded")
         if events.preview_load_error.is_set():
             events.preview_load_error.clear()
@@ -388,35 +386,43 @@ class App():
         if sample == "":
             return
         self.window.set_state("preview_loading")
-        cmd = constants.sampleCommand[:]
-        cmd[6] = str(self.vars["width"].get())
-        cmd[8] = str(self.vars["areas"].get())
 
         self.log.info("Refreshing preview started.")
         exporter_thread = threading.Thread(
             target=self.export_sample,
             args=(
-                cmd,
+                constants.sampleCommand[:],
                 self.exporter.get_file(self.vars["video_length"].get() - 1),
+                self.vars["width"].get(),
+                float(self.vars["areas"].get()),
                 1
             )
         )
         exporter_thread.start()
 
     @ask_retry_on_fail(on_fail=events.preview_load_error.set)
-    def export_sample(self, command: List[str], sample: str, retry: int) -> None:
+    def export_sample(self, command: List[str], file: str, width: int, areas: float, attempts: int = 1) -> None:
         """
         Export png from the cslmap file that will be the given frame of the video.
 
         This function should run on a separate thread.
         """
+        command[6] = str(width)
+        command[8] = str(areas)
+        
         exported = self.exporter.export_file(
-            sample,
+            file,
             command,
-            retry
+            attempts
         )
         with self.lock:
             self.vars["preview_source"] = Image.open(exported)
+            self.preview.justExported(
+                self.vars["preview_source"],
+                width,
+                areas,
+                float(self.vars["areas"].get())
+            )
         events.preview_loaded.set()
 
     def open_file(self, title: str, filetypes: List[Tuple], default_directory: str = None) -> str:
