@@ -105,21 +105,11 @@ class Settings():
 
     def _to_xml(self, setting: Any) -> str:
         """Change the given setting to the corresponding text in the xml file."""
-        if setting == 0:
-            return "false"
-        elif setting == 1:
-            return "true"
-        else:
-            return str(setting)
+        return str(setting)
 
     def _to_var(self, setting: str) -> Any:
         """Change the given setting to the corresponding value for the local setting variables."""
-        if setting == "true":
-            return 1
-        elif setting == "false":
-            return 0
-        else:
-            return setting
+        return setting
 
     def change_state(self) -> None:
         """Signal that the state of some elements have been changed."""

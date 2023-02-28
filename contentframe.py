@@ -616,14 +616,35 @@ class Settings_page(Content_frame):
                             column=0, sticky=tkinter.EW)
             for widget in subframe:
                 if widget.tag == "setting":
-                    var = tkinter.IntVar()
+                    var = tkinter.StringVar()
                     settings.settings_handler.add_variable(
                         var, widget.get("path"), True)
                     if widget.get("type") == "checkbutton":
-                        w = ttk.Checkbutton(labelframe, text=widget.get("name"), variable=var, onvalue=1, offvalue=0,
-                                            cursor=constants.clickable, command=lambda: settings.settings_handler.change_state())
-                elif widget.tag == "label":
-                    w = ttk.Label(labelframe, text=widget.get("name"))
+                        w = ttk.Checkbutton(labelframe, text=widget.get("name"), variable=var, onvalue="true", offvalue="false",
+                                            cursor=constants.clickable, command = lambda: settings.settings_handler.change_state())
+                    elif widget.get("type") == "integer":
+                        w = ttk.Frame(labelframe)
+                        label = ttk.Label(w, text=widget.get("name"))
+                        entry = ttk.Entry(w, width = 4, textvariable = var, validatecommand = lambda *args: True)
+                        label.grid(row = 0, column = 0, sticky = tkinter.W)
+                        entry.grid(row = 0, column = 1, sticky = tkinter.W)
+                    elif widget.get("type") == "menu":
+                        w = ttk.Frame(labelframe)
+                        label = ttk.Label(w, text=widget.get("name"))
+                        mb = ttk.Menubutton(w, textvariable=var, cursor=constants.clickable)
+                        menu = tkinter.Menu(mb, tearoff=0, cursor = constants.clickable)
+                        mb["menu"] = menu
+                        for option in widget.get("options").split(";"):
+                            menu.add_radiobutton(label = option, variable=var, value = option, command = lambda: settings.settings_handler.change_state())
 
-                w.grid(row=widget.get("row"), column=widget.get(
-                    "column", 0), sticky=tkinter.W)
+                        label.grid(row = 0, column = 0, sticky = tkinter.W)
+                        mb.grid(row = 0, column = 1, sticky = tkinter.W)
+                    elif widget.tag == "label":
+                        w = ttk.Label(labelframe, text=widget.get("name"))
+
+                    w.grid(row=widget.get("row"), column=widget.get(
+                        "column", 0), sticky=tkinter.W)
+                
+        self.settings_frame.rowconfigure(len(self.settings_frame.winfo_children()), weight = 1)
+        write_btn = ttk.Button(self.settings_frame, text="Save settings", cursor = constants.clickable, command = lambda: settings.settings_handler.write())
+        write_btn.grid(column = 0, row = len(self.settings_frame.winfo_children()) + 1, sticky = tkinter.EW)

@@ -3,11 +3,13 @@
 Settings: root element
     page: One page in the application - settings that are visible at the same time
         labelframe: visually grouped settings in a frame with a label `name`
-            setting: one setting. `name` is show in the application,
+            setting: one setting.
+                `name` is show in the application
                 `type` is the type of widget (checkbox or integer)
                 `xmlpath` is the path to the setting in the CSLMapViewConfig.xml file
+                `row` is the row number of setting - - necessary as XML does not guarantee order
+                `options` is a semicolon-separated list of options for menu types
             label: label shown in the application
-            future: functionality not implemented yet
 -->
 <Settings>
     <page name="Elements">
@@ -41,7 +43,7 @@ Settings: root element
         <labelframe name="General" row="0">
             <setting name="Public transport routes" path="./RenderTransportRoute" type="checkbutton" row="0" />
             <setting name="Route numberigs" path="./RenderTransport" type="checkbutton" row="1" />
-            <future name="Merge stops/stations within (m)" path="./RenderTransport" type="integer" row="2" />
+            <setting name="Merge stops/stations within (m)" path="./RouteMapConfig/StopsMergingRange" type="integer" row="2" />
             
         </labelframe>
         <labelframe name="Lines and stops" row="1">
@@ -72,13 +74,14 @@ Settings: root element
     </page>
     <page name="Miscallenous">
         <labelframe name="Terrain" row="0">
+            <future/>
             <setting name="Use vectorized terrain" path="./UseVectorTerrain" type="checkbutton" row="0" />
             <setting name="Display contour lines (only available in vectorized terrain mode)" path="./DisplayContourLines" type="checkbutton" row="1" />
-            <future name="Interval of altitude" path="./ContourIntervals" type="menu" row="2" />
-            <future name="Max parallelism for contour calculation" path="./MaxParallelism" type="integer" row="3" />
+            <setting name="Interval of altitude" path="./ContourIntervals" type="menu" row="2" options="None;Low;Default"/>
+            <setting name="Max parallelism for contour calculation" path="./MaxParallelism" type="integer" row="3" />
         </labelframe>
         <labelframe name="Other" row="1">
-            <future name="Map style" path="./." type="menu" row="0" />
+            <setting name="Map style" path="./SelectedStyle" type="menu" row="0" options="default;lightgray-water;lightgray"/>
             <setting name="Disable bitmap cache" path="./DisableBitmapCache" type="checkbutton" row="1" />
         </labelframe>
     </page>
