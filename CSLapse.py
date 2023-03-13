@@ -25,6 +25,11 @@ import contentframe
 
 # Suggestions for any sort of improvement are welcome.
 
+# TODO: Update docstrings
+# TODO: Separate Exporter into a module with all exporting tasks
+# TODO: Separate dialogs into their own module
+# TODO: Create folders for modules with init.py files instead of dumping them in the root folder
+
 
 class AbortException(Exception):
     pass
@@ -731,6 +736,8 @@ class Exporter():
 
     def collect_raw_files(self, filename: str) -> int:
         """Make an array of files whose name matches the city's name and return its length"""
+        
+        # TODO: CHange the filter to not include files without date. Possibly use re.
         self.raw_files = sorted(
             filter(
                 lambda filename: filename.name.startswith(

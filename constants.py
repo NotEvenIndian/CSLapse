@@ -1,5 +1,7 @@
 """All constant values used in the prject."""
 
+# TODO: Separate constants to their respective modules where possible
+
 abort = False
 sampleExportWidth = 2000
 defaultFPS = 24
