@@ -22,12 +22,12 @@ from modules import constants
 from modules.filemanager import resource_path
 from modules import settings
 from modules import contentframe
+from modules import dialogs
 
 # Suggestions for any sort of improvement are welcome.
 
 # TODO: Update docstrings
 # TODO: Separate Exporter into a module with all exporting tasks
-# TODO: Separate dialogs into their own module
 
 
 class AbortException(Exception):
@@ -149,85 +149,6 @@ def timestamp() -> str:
     return str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
 
 
-def show_warning(message: str, title: str = "Warning") -> None:
-    """
-    Show warning dialog box.
-
-    Warnings are for when an action can not be performed currently
-    but the issue can be resolved within the application.
-
-    For more serious issues use errors.
-    """
-    log = logging.getLogger("root")
-    log.info(f"Warning shown: {title} | {message}")
-    messagebox.showwarning(title, message)
-
-
-def show_info(message: str, title: str = "Info") -> None:
-    """Show info dialog box with given message and title."""
-    log = logging.getLogger("root")
-    log.info(f"Info shown: {title} | {message}")
-    messagebox.showinfo(title, message)
-
-
-def ask_non_fatal_error(message: str, title: str = "Error") -> bool:
-    """
-    Show error dialog box.
-
-    Returns True  if the user wants to retry, False otherwise.
-
-    Non-fatal errors are for when an action can not be performed currently
-    and can not be resolved entirely within the application,
-    but can be resumed and successfully completed from the current state
-    after changing some settings on the user's machine.
-
-    Non-fatal errors can be dismissed.
-    """
-    log = logging.getLogger("root")
-    log.info(f"Non-fatal error shown: {title} | {message}")
-    return messagebox.askretrycancel(title, message)
-
-
-def ask_aborting_error(message: str, title: str = "Fatal error") -> None:
-    """
-    Show Aborting error dialog box.
-
-    Initiates abort if the user cancels.
-
-    Aborting errors are for when an action cannot be performed
-    that is an integral part of the exporting process.
-    Aborting errors do not threaten exitin the rogram,
-    only aborting the exporting process.
-
-    The user can decide to retry and continue exporting or abort it.
-    """
-    log = logging.getLogger("root")
-    message += "\n\nRetry or exporting will be aborted."
-    log.info(f"Aborting error shown: {title} | {message}")
-    if not messagebox.askretrycancel(title, message):
-        log.info(f"Abort initiated from aborting error: {title} | {message}")
-        events.abort.set()
-
-
-def ask_fatal_error(message: str, title: str = "Fatal error") -> bool:
-    """
-    Show fatal error dialgbox.
-
-    Returns True  if the user wants to retry, False otherwise.
-
-    Fatal errors are for when an action cannot be performed
-    which is an essential part of the program.
-    Fatal errors lead to termination that should be initiated by the caller.
-
-    The user can decide to retry and continue the program
-    or Cancel and exit prematurely.
-    """
-    log = logging.getLogger("root")
-    message += "\n\nRetry or the program will exit automatically."
-    log.info(f"Fatal error shown: {title} | {message}")
-    return messagebox.askretrycancel(title, message)
-
-
 class events:
     """Namespace containing threading events used by the application."""
     abort = threading.Event()
@@ -261,7 +182,7 @@ def ask_retry_on_fail(on_fail: Callable = None) -> None:
                     log.exception("Aborting operation without asking")
                     break
                 except Exception as e:
-                    if not ask_non_fatal_error(f"An exception occoured:\n{str(e)}\nDo you want to retry?"):
+                    if not dialogs.ask_non_fatal_error(f"An exception occoured:\n{str(e)}\nDo you want to retry?"):
                         log.exception("Not retrying operation after exception")
                         break
             if on_fail is not None:
@@ -368,7 +289,7 @@ class App():
             events.exporting_done.clear()
             self.cleanup_after_success()
             self.window.set_state("render_done")
-            show_info(
+            dialogs.show_info(
                 f"See your timelapse at {self.exporter.out_file}", "Video completed")
         if events.abort_finished.is_set():
             events.abort_finished.clear()
@@ -479,7 +400,7 @@ class App():
                 settings.settings_handler.set_file(xml_file)
                 return True
             except Exception as e:
-                if ask_non_fatal_error(f"Could not load settings file {xml_file}.\n{str(e)}"):
+                if dialogs.ask_non_fatal_error(f"Could not load settings file {xml_file}.\n{str(e)}"):
                     self.log.info(
                         "Retrying after failed attempt to load settings file")
                     continue
@@ -497,7 +418,7 @@ class App():
         Impossible to recover state afterwards.
         """
         if not self.exporter.can_abort():
-            show_warning(constants.texts.ALREADY_RUNNING_MESSAGE)
+            dialogs.show_warning(constants.texts.ALREADY_RUNNING_MESSAGE)
             return
 
         if threading.current_thread() is not threading.main_thread():
@@ -565,15 +486,15 @@ class App():
         Show a warning message otherwise.
         """
         if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
-            show_warning(title="Warning", message=constants.texts.NO_EXE_MESSAGE)
+            dialogs.show_warning(title="Warning", message=constants.texts.NO_EXE_MESSAGE)
             return
         if self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
-            show_warning(title="Warning",
+            dialogs.show_warning(title="Warning",
                          message=constants.texts.NO_SAMPLE_MESSAGE)
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
-            show_warning(title="Warning",
+            dialogs.show_warning(title="Warning",
                          message="Not enough files to match video frames!")
             return
         self.refresh_preview()
@@ -585,19 +506,19 @@ class App():
             f'Submit button pressed with entry data:\nexefile={self.vars["exe_file"].get()}\nfps={self.vars["fps"].get()}\nwidth={self.vars["width"].get()}\nvideolenght={self.vars["video_length"].get()}\nthreads={self.vars["threads"].get()}\nretry={self.vars["retry"].get()}')
         try:
             if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
-                show_warning(constants.texts.NO_EXE_MESSAGE)
+                dialogs.show_warning(constants.texts.NO_EXE_MESSAGE)
             elif self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
-                show_warning(constants.texts.NO_SAMPLE_MESSAGE)
+                dialogs.show_warning(constants.texts.NO_SAMPLE_MESSAGE)
             elif not self.vars["fps"].get() > 0:
-                show_warning(constants.texts.INVALID_FPS_MESSAGE)
+                dialogs.show_warning(constants.texts.INVALID_FPS_MESSAGE)
             elif not self.vars["width"].get() > 0:
-                show_warning(constants.texts.INVALID_WIDTH_MESSAGE)
+                dialogs.show_warning(constants.texts.INVALID_WIDTH_MESSAGE)
             elif not self.vars["video_length"].get() > 0:
-                show_warning(constants.texts.INVALID_LENGTH_MESSAGE)
+                dialogs.show_warning(constants.texts.INVALID_LENGTH_MESSAGE)
             elif not self.vars["threads"].get() > 0:
-                show_warning(constants.texts.INVALID_THREADS_MESSAGE)
+                dialogs.show_warning(constants.texts.INVALID_THREADS_MESSAGE)
             elif not self.vars["retry"].get() > -1:
-                show_warning(constants.texts.INVALUD_RETRY_MESSAGE)
+                dialogs.show_warning(constants.texts.INVALUD_RETRY_MESSAGE)
             else:
                 if not self.exporter.export(
                     self.vars["width"].get(),
@@ -613,7 +534,7 @@ class App():
                         "An export operation is already running!")
         except Exception:
             self.log.exception("Incorrect entry data.")
-            show_warning(
+            dialogs.show_warning(
                 "Something went wrong. Check your settings and try again.")
 
     def abort_pressed(self) -> None:
@@ -639,7 +560,7 @@ class App():
                 self.log.info("Abort process initiated by close button.")
         elif self.exporter.is_aborting:
             events.close.set()
-            show_warning(constants.texts.ABORT_RUNNING_EXIT_AFTER_FINISHED_MESSAGE)
+            dialogs.show_warning(constants.texts.ABORT_RUNNING_EXIT_AFTER_FINISHED_MESSAGE)
         else:
             self.log.info("Exiting due to close button pressed.")
             events.abort.set()
@@ -713,7 +634,7 @@ class Exporter():
             except Exception as e:
                 self.log.exception(
                     "Error while clearing / creating temp_folder.")
-                if not ask_fatal_error(str(e)):
+                if not dialogs.ask_fatal_error(str(e)):
                     raise
 
     def set_sample_file(self, sample: str) -> None:
@@ -942,7 +863,7 @@ class Exporter():
                     raise AbortException from e
                 except cv2.error as e:
                     # For some reason it still cannot catch cv2 errors
-                    if not ask_non_fatal_error(str(e)):
+                    if not dialogs.ask_non_fatal_error(str(e)):
                         i += 1
                         self.log.exception(
                             f"Skipping image '{self.imageFiles[i]}' after cv2 Exception.")
@@ -950,7 +871,7 @@ class Exporter():
                         self.log.warning(
                             f"Retrying adding image '{self.image_files[i]}' to video after cv2 Exception.")
                 except Exception as e:
-                    if not ask_non_fatal_error(str(e)):
+                    if not dialogs.ask_non_fatal_error(str(e)):
                         i += 1
                         self.log.warning(
                             f"Skipping image '{self.imageFiles[i]}' after unknow Exception.")
