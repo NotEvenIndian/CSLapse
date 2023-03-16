@@ -2,7 +2,6 @@
 
 # TODO: Separate constants to their respective modules where possible
 
-abort = False
 sampleExportWidth = 2000
 defaultFPS = 24
 defaultExportWidth = 2000

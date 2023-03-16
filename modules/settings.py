@@ -3,8 +3,8 @@ import xml.etree.ElementTree as ET
 from typing import NamedTuple, Any, List
 import logging
 
-import constants
-from filemanager import resource_path
+from . import constants
+from .filemanager import resource_path
 
 """
 Module responsible for interacting with the CSLMapView config file.

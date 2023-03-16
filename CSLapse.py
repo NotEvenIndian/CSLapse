@@ -18,17 +18,16 @@ from tkinter import messagebox
 from PIL import ImageTk, Image
 from functools import wraps
 
-import constants
-from filemanager import resource_path
-import settings
-import contentframe
+from modules import constants
+from modules.filemanager import resource_path
+from modules import settings
+from modules import contentframe
 
 # Suggestions for any sort of improvement are welcome.
 
 # TODO: Update docstrings
 # TODO: Separate Exporter into a module with all exporting tasks
 # TODO: Separate dialogs into their own module
-# TODO: Create folders for modules with init.py files instead of dumping them in the root folder
 
 
 class AbortException(Exception):

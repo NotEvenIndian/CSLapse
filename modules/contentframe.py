@@ -2,9 +2,9 @@ import tkinter
 from tkinter import ttk
 from abc import ABC, abstractmethod
 
-import constants
-from preview import Preview
-import settings
+from . import constants
+from .preview import Preview
+from . import settings
 
 """
 Module responsible for tkinter frames in the GUI.

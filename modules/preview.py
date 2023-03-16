@@ -3,7 +3,7 @@ from tkinter import ttk
 from PIL import ImageTk, Image
 
 from pathlib import Path
-from filemanager import resource_path
+from .filemanager import resource_path
 
 """
 Module repsondible for the preview window on the right.
