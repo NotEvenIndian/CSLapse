@@ -83,15 +83,15 @@ class Main_frame(Content_frame):
         self.exeSelectLabel = ttk.Label(
             self.fileSelectionBox, text="Path to CSLMapViewer.exe")
         self.exePath = ttk.Entry(self.fileSelectionBox, state=[
-                                 "readonly"], textvariable=vars["exe_file"], cursor=constants.clickable)
+                                 "readonly"], textvariable=vars["exe_file"], cursor=constants.CLICKABLE)
         self.exeSelectBtn = ttk.Button(self.fileSelectionBox, text="Select file",
-                                       cursor=constants.clickable, command=callbacks["select_exe"])
+                                       cursor=constants.CLICKABLE, command=callbacks["select_exe"])
         self.sampleSelectLabel = ttk.Label(
             self.fileSelectionBox, text="Select a cslmap file of your city")
         self.samplePath = ttk.Entry(self.fileSelectionBox, state=[
-                                    "readonly"], textvariable=vars["sample_file"], cursor=constants.clickable)
+                                    "readonly"], textvariable=vars["sample_file"], cursor=constants.CLICKABLE)
         self.sampleSelectBtn = ttk.Button(
-            self.fileSelectionBox, text="Select file", cursor=constants.clickable, command=callbacks["select_sample"])
+            self.fileSelectionBox, text="Select file", cursor=constants.CLICKABLE, command=callbacks["select_sample"])
         self.filesLoading = ttk.Progressbar(self.fileSelectionBox)
         self.filesNumLabel = ttk.Label(
             self.fileSelectionBox, textvariable=vars["num_of_files"])
@@ -143,9 +143,9 @@ class Main_frame(Content_frame):
             self.progressFrame, orient="horizontal", mode="determinate", variable=vars["rendering_done"])
 
         self.submitBtn = ttk.Button(
-            self.frame, text="Export", cursor=constants.clickable, command=callbacks["submit"])
+            self.frame, text="Export", cursor=constants.CLICKABLE, command=callbacks["submit"])
         self.abortBtn = ttk.Button(
-            self.frame, text="Abort", cursor=constants.clickable, command=callbacks["abort"])
+            self.frame, text="Abort", cursor=constants.CLICKABLE, command=callbacks["abort"])
 
     def _grid(self) -> None:
         """Grid the widgets contained in the main frame."""
@@ -218,7 +218,7 @@ class Main_frame(Content_frame):
 
     def set_state(self, state: str) -> None:
         """Set options for the wisgets in the main frame."""
-        if state == constants.main_page:
+        if state == constants.MAIN_PAGE:
             self.show()
         elif state in settings.layout_loader.get_pages():
             self.hide()
@@ -360,12 +360,12 @@ class Preview_frame(Content_frame):
         """Create the widgets contained in the preview frame."""
         self.canvasFrame = ttk.Frame(
             self.frame, relief=tkinter.SUNKEN, borderwidth=2)
-        self.preview = Preview(self.frame, constants.no_preview_image)
-        self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text="Refresh", cursor=constants.clickable,
+        self.preview = Preview(self.frame, constants.NO_PREVIEW_IMAGE)
+        self.refreshPreviewBtn = ttk.Button(self.preview.canvas, text="Refresh", cursor=constants.CLICKABLE,
                                             command=lambda: callbacks["refresh_preview"]())
-        self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text="Fit", cursor=constants.clickable,
+        self.fitToCanvasBtn = ttk.Button(self.preview.canvas, text="Fit", cursor=constants.CLICKABLE,
                                          command=self.preview.fitToCanvas)
-        self.originalSizeBtn = ttk.Button(self.preview.canvas, text="100%", cursor=constants.clickable,
+        self.originalSizeBtn = ttk.Button(self.preview.canvas, text="100%", cursor=constants.CLICKABLE,
                                           command=self.preview.scaleToOriginal)
 
         self.canvasSettingFrame = ttk.Frame(self.frame)
@@ -373,16 +373,16 @@ class Preview_frame(Content_frame):
         self.zoomEntry = ttk.Spinbox(self.canvasSettingFrame, width=5, textvariable=vars["areas"], from_=0.1, increment=0.1, to=9.0, wrap=False, validatecommand=(
             callbacks["areas_entered"], "%d", "%P"), validate="all", command=lambda: callbacks["areas_changed"]())
         self.zoomSlider = ttk.Scale(self.canvasSettingFrame, orient=tkinter.HORIZONTAL, from_=0.1, to=9.0,
-                                    variable=vars["areas"], cursor=constants.clickable, command=lambda _: callbacks["areas_changed"]())
+                                    variable=vars["areas"], cursor=constants.CLICKABLE, command=lambda _: callbacks["areas_changed"]())
 
         self.rotationLabel = ttk.Label(
             self.canvasSettingFrame, text="Rotation:")
         self.rotationSelection = ttk.Menubutton(
-            self.canvasSettingFrame, textvariable=vars["rotation"], cursor=constants.clickable)
+            self.canvasSettingFrame, textvariable=vars["rotation"], cursor=constants.CLICKABLE)
         self.rotationSelection.menu = tkinter.Menu(
             self.rotationSelection, tearoff=0)
         self.rotationSelection["menu"] = self.rotationSelection.menu
-        for option in constants.rotaOptions:
+        for option in constants.ROTA_OPTIONS:
             self.rotationSelection.menu.add_radiobutton(
                 label=option, variable=vars["rotation"])
 
@@ -472,7 +472,7 @@ class Preview_frame(Content_frame):
                 self.fitToCanvasBtn,
                 self.originalSizeBtn
             )
-            self.preview.canvas.configure(cursor=constants.preview_cursor)
+            self.preview.canvas.configure(cursor=constants.PREVIEW_CURSOR)
         elif state == "preview_load_error":
             self._enable_widgets(self.refreshPreviewBtn)
             self._show_widgets(self.refreshPreviewBtn)
@@ -493,7 +493,7 @@ class Preview_frame(Content_frame):
                 self.originalSizeBtn,
                 self.refreshPreviewBtn
             )
-            self.preview.canvas.configure(cursor=constants.preview_cursor)
+            self.preview.canvas.configure(cursor=constants.PREVIEW_CURSOR)
 
     def get_preview(self) -> Preview:
         """Return the preview object of the frame."""
@@ -505,12 +505,12 @@ class Pages_frame(Content_frame):
     def _populate(self, vars: dict, callbacks: dict) -> None:
         """Create the widgets contained in the pages frame."""
         self.general_label = ttk.Label(
-            self.frame, text="General", cursor=constants.clickable, background=constants.active_page_color)
+            self.frame, text="General", cursor=constants.CLICKABLE, background=constants.ACTIVE_PAGE_BUTTON_COLOR)
         self.drawing_target_label = ttk.Label(
-            self.frame, text="Drawing targets", cursor=constants.clickable, background=constants.inactive_page_color)
+            self.frame, text="Drawing targets", cursor=constants.CLICKABLE, background=constants.INACTIVE_PAGE_BUTTON_COLOR)
         self.settings_labels = [
-            ttk.Label(self.frame, text=page, cursor=constants.clickable,
-                      background=constants.inactive_page_color)
+            ttk.Label(self.frame, text=page, cursor=constants.CLICKABLE,
+                      background=constants.INACTIVE_PAGE_BUTTON_COLOR)
             for page in settings.layout_loader.get_pages()
         ]
 
@@ -524,7 +524,7 @@ class Pages_frame(Content_frame):
     def _create_bindings(self, callbacks: dict) -> None:
         """Bind events to widgets in the main frame."""
         self.general_label.bind('<ButtonPress-1>', lambda event,
-                                cb=callbacks: cb["set_page"](constants.main_page))
+                                cb=callbacks: cb["set_page"](constants.MAIN_PAGE))
         for widget in self.settings_labels:
             # This doesn't work if the lambda doesn't get the page as kwarg.
             # That way when the events fire and the lambda is run, all the widgets fire the exact same event, the one that was last bound
@@ -536,17 +536,17 @@ class Pages_frame(Content_frame):
 
     def set_state(self, state: str) -> None:
         """Set options for the widgets in the main frame."""
-        if state == constants.main_page:
+        if state == constants.MAIN_PAGE:
             for w in self.frame.winfo_children():
-                w.configure(background=constants.inactive_page_color)
+                w.configure(background=constants.INACTIVE_PAGE_BUTTON_COLOR)
             self.general_label.configure(
-                background=constants.active_page_color)
+                background=constants.ACTIVE_PAGE_BUTTON_COLOR)
         elif state in settings.layout_loader.get_pages():
             for w in self.frame.winfo_children():
                 if w["text"] == state:
-                    w.configure(background=constants.active_page_color)
+                    w.configure(background=constants.ACTIVE_PAGE_BUTTON_COLOR)
                 else:
-                    w.configure(background=constants.inactive_page_color)
+                    w.configure(background=constants.INACTIVE_PAGE_BUTTON_COLOR)
 
 
 class Settings_page(Content_frame):
@@ -560,11 +560,11 @@ class Settings_page(Content_frame):
 
         self.no_file_frame = ttk.Frame(self.frame)
         self.no_file_label = ttk.Label(
-            self.no_file_frame, text=constants.texts.no_settings_message)
+            self.no_file_frame, text=constants.texts.NO_SETTINGS_MESSAGE)
 
         self.xml_error_frame = ttk.Frame(self.frame)
         self.xml_error_label = ttk.Label(
-            self.xml_error_frame, text=constants.texts.settings_not_loaded_message)
+            self.xml_error_frame, text=constants.texts.SETTINGS_COULD_NOT_LOAD_MESSAGE)
 
         self.settings_frame = ttk.Frame(self.frame)
 
@@ -592,7 +592,7 @@ class Settings_page(Content_frame):
         """Set options for the widgets in the frame."""
         if state == self.page:
             self.show()
-        elif state == constants.main_page:
+        elif state == constants.MAIN_PAGE:
             self.hide()
         elif state in settings.layout_loader.get_pages():
             self.hide()
@@ -621,7 +621,7 @@ class Settings_page(Content_frame):
                         var, widget.get("path"), True)
                     if widget.get("type") == "checkbutton":
                         w = ttk.Checkbutton(labelframe, text=widget.get("name"), variable=var, onvalue="true", offvalue="false",
-                                            cursor=constants.clickable, command = lambda: settings.settings_handler.change_state())
+                                            cursor=constants.CLICKABLE, command = lambda: settings.settings_handler.change_state())
                     elif widget.get("type") == "integer":
                         w = ttk.Frame(labelframe)
                         label = ttk.Label(w, text=widget.get("name"))
@@ -631,8 +631,8 @@ class Settings_page(Content_frame):
                     elif widget.get("type") == "menu":
                         w = ttk.Frame(labelframe)
                         label = ttk.Label(w, text=widget.get("name"))
-                        mb = ttk.Menubutton(w, textvariable=var, cursor=constants.clickable)
-                        menu = tkinter.Menu(mb, tearoff=0, cursor = constants.clickable)
+                        mb = ttk.Menubutton(w, textvariable=var, cursor=constants.CLICKABLE)
+                        menu = tkinter.Menu(mb, tearoff=0, cursor = constants.CLICKABLE)
                         mb["menu"] = menu
                         for option in widget.get("options").split(";"):
                             menu.add_radiobutton(label = option, variable=var, value = option, command = lambda: settings.settings_handler.change_state())
@@ -646,5 +646,5 @@ class Settings_page(Content_frame):
                         "column", 0), sticky=tkinter.W)
                 
         self.settings_frame.rowconfigure(len(self.settings_frame.winfo_children()), weight = 1)
-        write_btn = ttk.Button(self.settings_frame, text="Save settings", cursor = constants.clickable, command = lambda: settings.settings_handler.write())
+        write_btn = ttk.Button(self.settings_frame, text="Save settings", cursor = constants.CLICKABLE, command = lambda: settings.settings_handler.write())
         write_btn.grid(column = 0, row = len(self.settings_frame.winfo_children()) + 1, sticky = tkinter.EW)

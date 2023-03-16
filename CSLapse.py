@@ -96,7 +96,7 @@ def get_logger_config_dict(debug: bool = False) -> dict:
     return dictionary
 
 
-class ThreadCollector(threading.Thread):
+class Thread_collector(threading.Thread):
     """Cancel and join all running threads and futures except for threads in keep_alive.
 
     Optionally count finished threads so far in counter
@@ -147,11 +147,6 @@ class ThreadCollector(threading.Thread):
 def timestamp() -> str:
     """Return a timestamp in format hhmmss."""
     return str(datetime.now()).split(" ")[-1].split(".")[0].replace(":", "")
-
-
-def roundToTwoDecimals(var: tkinter.StringVar) -> None:
-    """Round the decimal in var to 2 decimal places."""
-    var.set(str(round(float(var.get()), 2)))
 
 
 def show_warning(message: str, title: str = "Warning") -> None:
@@ -248,9 +243,9 @@ class events:
 
 def ask_retry_on_fail(on_fail: Callable = None) -> None:
     """
-    Try running the function and prompt the user when n exception occours.
+    Try running the function and prompt the user when an exception occours.
 
-    The user may choose to retryy the function or not,
+    The user may choose to retry the function or not,
     in which case on_fail is executed and None is returned.
     """
 
@@ -282,7 +277,7 @@ def ask_save_settings(function: Callable):
     def wrapper(*args, **kwargs):
         if settings.settings_handler.has_state_changed():
             action = messagebox.askyesnocancel(
-                title=constants.texts.save_settings, message=constants.texts.ask_save_settings)
+                title=constants.texts.ASK_SAVE_SETTINGS_TITLE, message=constants.texts.ASK_SAVE_SETTINGS_MESSAGE)
             if action is None:
                 return
             elif action:
@@ -302,7 +297,7 @@ class App():
         """Clean up after the object"""
         if self.exporter.temp_folder is not None and self.exporter.temp_folder.exists():
             rmtree(self.exporter.temp_folder, ignore_errors=True)
-        collector = ThreadCollector(
+        collector = Thread_collector(
             [threading.current_thread()], counter=self.vars["thread_collecting"])
         collector.start()
         collector.join()
@@ -317,15 +312,15 @@ class App():
         self.root.bind('<<Abort>>', lambda event: events.abort.set())
         self.root.protocol("WM_DELETE_WINDOW", self.close_pressed)
         self.vars = {
-            "exe_file": tkinter.StringVar(value=constants.noFileText),
-            "sample_file": tkinter.StringVar(value=constants.noFileText),
+            "exe_file": tkinter.StringVar(value=constants.NO_FILE_TEXT),
+            "sample_file": tkinter.StringVar(value=constants.NO_FILE_TEXT),
             "num_of_files": tkinter.IntVar(value=0),
-            "fps": tkinter.IntVar(value=constants.defaultFPS),
-            "width": tkinter.IntVar(value=constants.defaultExportWidth),
-            "threads": tkinter.IntVar(value=constants.defaultThreads),
-            "retry": tkinter.IntVar(value=constants.defaultRetry),
-            "rotation": tkinter.StringVar(value=constants.rotaOptions[0]),
-            "areas": tkinter.StringVar(value=constants.defaultAreas),
+            "fps": tkinter.IntVar(value=constants.DEFAULT_FPS),
+            "width": tkinter.IntVar(value=constants.DEFAULT_EXPORT_WIDTH),
+            "threads": tkinter.IntVar(value=constants.DEFAULT_THREADS),
+            "retry": tkinter.IntVar(value=constants.DEFAULT_RETRY),
+            "rotation": tkinter.StringVar(value=constants.ROTA_OPTIONS[0]),
+            "areas": tkinter.StringVar(value=constants.DEFAULT_AREAS),
             "video_length": tkinter.IntVar(value=0),
             "exporting_done": tkinter.IntVar(value=0),
             "rendering_done": tkinter.IntVar(value=0),
@@ -338,7 +333,7 @@ class App():
         self.window = CSLapse_window(self.root, self.vars, callbacks)
         self.preview = self.window.get_preview()
 
-        self.root.after(0, self._checkThreadEvents)
+        self.root.after(0, self._check_thread_events)
 
         self.log.info("App object initiated.")
 
@@ -346,7 +341,7 @@ class App():
         """Placeholder function, do nothing."""
         pass
 
-    def _checkThreadEvents(self) -> None:
+    def _check_thread_events(self) -> None:
         """Check if the threading events are set, repeat after 100 ms."""
         if events.preview_loaded.is_set():
             events.preview_loaded.clear()
@@ -378,13 +373,13 @@ class App():
         if events.abort_finished.is_set():
             events.abort_finished.clear()
             self.cleanup_after_abort()
-        self.root.after(100, self._checkThreadEvents)
+        self.root.after(100, self._check_thread_events)
 
     def refresh_preview(self) -> None:
         """Export the preview CSLMap file with current settings."""
-        if self.vars["exe_file"].get() == constants.noFileText:
+        if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
             return
-        if self.vars["sample_file"].get() == constants.noFileText:
+        if self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
@@ -395,7 +390,7 @@ class App():
         exporter_thread = threading.Thread(
             target=self.export_sample,
             args=(
-                constants.sampleCommand[:],
+                constants.SAMPLE_COMMAND[:],
                 self.exporter.get_file(self.vars["video_length"].get() - 1),
                 self.vars["width"].get(),
                 float(self.vars["areas"].get()),
@@ -439,7 +434,7 @@ class App():
     def select_sample(self) -> None:
         """Ask user to select sample file from dialog and set variables accordingly."""
         selected_file = self.open_file(
-            constants.texts.openSampleTitle, constants.filetypes.cslmap)
+            constants.texts.OPEN_SAMPLE_TITLE, constants.filetypes.cslmap)
         if selected_file == self.vars["sample_file"].get():
             return
         elif selected_file != "":
@@ -454,15 +449,15 @@ class App():
                     min(self.vars["video_length"].get(), num_of_files))
             self.refresh_preview()
         else:
-            self.vars["sample_file"].set(constants.noFileText)
+            self.vars["sample_file"].set(constants.NO_FILE_TEXT)
 
     def select_exe(self) -> None:
         """Ask user to select SCLMapViewer.exe from dialog and set variables accordingly."""
         selected_file = self.open_file(
-            constants.texts.openSampleTitle, constants.filetypes.exe)
+            constants.texts.OPEN_EXE_TITLE, constants.filetypes.exe)
         if selected_file != "":
             self.vars["exe_file"].set(selected_file)
-            constants.sampleCommand[0] = selected_file
+            constants.SAMPLE_COMMAND[0] = selected_file
             self.exporter.set_exefile(selected_file)
             if self.load_settings_xml(Path(selected_file).parent):
                 self.window.set_state("xml_loaded")
@@ -470,7 +465,7 @@ class App():
                 self.window.set_state("xml_load_error")
             self.refresh_preview()
         else:
-            self.vars["exe_file"].set(constants.noFileText)
+            self.vars["exe_file"].set(constants.NO_FILE_TEXT)
 
     def load_settings_xml(self, directory: Path) -> bool:
         """
@@ -480,7 +475,7 @@ class App():
         """
         while True:
             try:
-                xml_file = Path(directory, constants.xml_file_name)
+                xml_file = Path(directory, constants.SETTINGS_FILE_NAME)
                 settings.settings_handler.set_file(xml_file)
                 return True
             except Exception as e:
@@ -502,7 +497,7 @@ class App():
         Impossible to recover state afterwards.
         """
         if not self.exporter.can_abort():
-            show_warning(constants.texts.abortAlreadyRunning)
+            show_warning(constants.texts.ALREADY_RUNNING_MESSAGE)
             return
 
         if threading.current_thread() is not threading.main_thread():
@@ -514,7 +509,7 @@ class App():
             self.log.info("Abort procedure started on main thread.")
 
             self.vars["thread_collecting"].set(0)
-            collector = ThreadCollector([threading.current_thread()], self.exporter.get_futures(
+            collector = Thread_collector([threading.current_thread()], self.exporter.get_futures(
             ), counter=self.vars["thread_collecting"], callback=events.abort_finished.set)
             self.window.progress_popup(
                 self.vars["thread_collecting"], collector.total())
@@ -569,12 +564,12 @@ class App():
         Check if all required variables are set correctly and if yes, refresh the preview.
         Show a warning message otherwise.
         """
-        if self.vars["exe_file"].get() == constants.noFileText:
-            show_warning(title="Warning", message=constants.texts.noExeMessage)
+        if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
+            show_warning(title="Warning", message=constants.texts.NO_EXE_MESSAGE)
             return
-        if self.vars["sample_file"].get() == constants.noFileText:
+        if self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
             show_warning(title="Warning",
-                         message=constants.texts.noSampleMessage)
+                         message=constants.texts.NO_SAMPLE_MESSAGE)
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
@@ -589,20 +584,20 @@ class App():
         self.log.info(
             f'Submit button pressed with entry data:\nexefile={self.vars["exe_file"].get()}\nfps={self.vars["fps"].get()}\nwidth={self.vars["width"].get()}\nvideolenght={self.vars["video_length"].get()}\nthreads={self.vars["threads"].get()}\nretry={self.vars["retry"].get()}')
         try:
-            if self.vars["exe_file"].get() == constants.noFileText:
-                show_warning(constants.texts.noExeMessage)
-            elif self.vars["sample_file"].get() == constants.noFileText:
-                show_warning(constants.texts.noSampleMessage)
+            if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
+                show_warning(constants.texts.NO_EXE_MESSAGE)
+            elif self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
+                show_warning(constants.texts.NO_SAMPLE_MESSAGE)
             elif not self.vars["fps"].get() > 0:
-                show_warning(constants.texts.invalidFPSMessage)
+                show_warning(constants.texts.INVALID_FPS_MESSAGE)
             elif not self.vars["width"].get() > 0:
-                show_warning(constants.texts.invalidWidthMessage)
+                show_warning(constants.texts.INVALID_WIDTH_MESSAGE)
             elif not self.vars["video_length"].get() > 0:
-                show_warning(constants.texts.invalidLengthMessage)
+                show_warning(constants.texts.INVALID_LENGTH_MESSAGE)
             elif not self.vars["threads"].get() > 0:
-                show_warning(constants.texts.invalidThreadsMessage)
+                show_warning(constants.texts.INVALID_THREADS_MESSAGE)
             elif not self.vars["retry"].get() > -1:
-                show_warning(constants.texts.invalidRetryMessage)
+                show_warning(constants.texts.INVALUD_RETRY_MESSAGE)
             else:
                 if not self.exporter.export(
                     self.vars["width"].get(),
@@ -623,7 +618,7 @@ class App():
 
     def abort_pressed(self) -> None:
         """Ask user if really wants to abort. Generate abort tkinter event if yes."""
-        if messagebox.askyesno(title="Abort action?", message=constants.texts.askAbort):
+        if messagebox.askyesno(title="Abort action?", message=constants.texts.ASK_ABORT_MESSAGE):
             self.log.info("Abort initiated by abort button.")
             self.root.event_generate('<<Abort>>', when="tail")
 
@@ -638,13 +633,13 @@ class App():
     def close_pressed(self) -> None:
         """Ask user if really wnats to quit. If yes, initiate abort and exit afterwards"""
         if self.exporter.is_running:
-            if messagebox.askyesno(title="Are you sure you want to exit?", message=constants.texts.askAbort):
+            if messagebox.askyesno(title="Are you sure you want to exit?", message=constants.texts.ASK_ABORT_MESSAGE):
                 events.close.set()
                 self.root.event_generate('<<Abort>>', when="tail")
                 self.log.info("Abort process initiated by close button.")
         elif self.exporter.is_aborting:
             events.close.set()
-            show_warning(constants.texts.exitAfterAbortEnded)
+            show_warning(constants.texts.ABORT_RUNNING_EXIT_AFTER_FINISHED_MESSAGE)
         else:
             self.log.info("Exiting due to close button pressed.")
             events.abort.set()
@@ -1051,7 +1046,7 @@ class CSLapse_window():
             for p in self.popups:
                 p.destroy()
         elif state == "aborting":
-            self.root.configure(cursor=constants.preview_cursor)
+            self.root.configure(cursor=constants.PREVIEW_CURSOR)
         elif state == "after_abort":
             for p in self.popups:
                 p.destroy()
@@ -1096,5 +1091,5 @@ if __name__ == "__main__":
     if gettrace is not None and gettrace():
         debug = True
     logging.config.dictConfig(get_logger_config_dict(debug))
-    current_directory = Path(__file__).parent.resolve()  # current directory
+    current_directory = Path(__file__).parent.resolve()
     main()

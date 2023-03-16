@@ -140,5 +140,5 @@ class Layout_loader():
         return self.pages
 
 
-layout_loader = Layout_loader(resource_path(constants.layout_source))
+layout_loader = Layout_loader(resource_path(constants.LAYOUT_SOURCE))
 settings_handler = Settings()
