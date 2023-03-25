@@ -1,7 +1,7 @@
 # CSLapse
 Create timelapses of your Cities:Skylines cities from regular CSLMapView saves.
 
-![](./docs/media/screenshotv1.0.0.png "Screenshot of the app")
+![](./docs/media/screenshotv1.2.0.png "Screenshot of the app")
 
 # Installation:
 The software is available as a precompiled binary for Windows10 x64. Download the latest release from [https://github.com/NotEvenIndian/CSLapse/releases](https://github.com/NotEvenIndian/CSLapse/releases).
@@ -26,7 +26,7 @@ To create a timelapse follow these steps:
 6. Wait until the process finishes.
 
 The program will create an mp4 file in the same folder where your source files are located.
-The program may take up to an hour to finish, depending on your hardware, settings and the amount of your files.
+The program may take long to finish, depending on your hardware, settings and the amount of your files.
 It is recommedned to compress the final video with an external software like [freeconvert.com](https://www.freeconvert.com/video-compressor).
 
 # Building from source
@@ -42,9 +42,11 @@ You might want to build the software from source. For this you will need git and
 
 Your executable will be generated in the dist folder.
 
-# TODO:
-* Extend documentation
-* (maybe) support different filetypes
+# Plans for the future
+* Tests
+* More ptimized exporting pipeline
+* Support for more filetypes
+* Exporting directly without using CSLMapView.exe
 
 # Acknowledgements
 This project extends upon the [CSLMapView mod](https://steamcommunity.com/sharedfiles/filedetails/?id=845665815) created by gansaku.
