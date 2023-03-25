@@ -26,7 +26,6 @@ from modules import dialogs
 
 # Suggestions for any sort of improvement are welcome.
 
-# TODO: Update docstrings
 # TODO: Separate Exporter into a module with all exporting tasks
 
 
@@ -84,7 +83,7 @@ def get_logger_config_dict(debug: bool = False) -> dict:
             }
         }
     }
-    
+
     if debug:
         dictionary["handlers"]["debugfile"] = {
             "class": "logging.handlers.RotatingFileHandler",
@@ -329,7 +328,7 @@ class App():
         """
         command[6] = str(width)
         command[8] = str(areas)
-        
+
         exported = self.exporter.export_file(
             file,
             command,
@@ -486,16 +485,17 @@ class App():
         Show a warning message otherwise.
         """
         if self.vars["exe_file"].get() == constants.NO_FILE_TEXT:
-            dialogs.show_warning(title="Warning", message=constants.texts.NO_EXE_MESSAGE)
+            dialogs.show_warning(
+                title="Warning", message=constants.texts.NO_EXE_MESSAGE)
             return
         if self.vars["sample_file"].get() == constants.NO_FILE_TEXT:
             dialogs.show_warning(title="Warning",
-                         message=constants.texts.NO_SAMPLE_MESSAGE)
+                                 message=constants.texts.NO_SAMPLE_MESSAGE)
             return
         sample = self.exporter.get_file(self.vars["video_length"].get() - 1)
         if sample == "":
             dialogs.show_warning(title="Warning",
-                         message="Not enough files to match video frames!")
+                                 message="Not enough files to match video frames!")
             return
         self.refresh_preview()
 
@@ -560,7 +560,8 @@ class App():
                 self.log.info("Abort process initiated by close button.")
         elif self.exporter.is_aborting:
             events.close.set()
-            dialogs.show_warning(constants.texts.ABORT_RUNNING_EXIT_AFTER_FINISHED_MESSAGE)
+            dialogs.show_warning(
+                constants.texts.ABORT_RUNNING_EXIT_AFTER_FINISHED_MESSAGE)
         else:
             self.log.info("Exiting due to close button pressed.")
             events.abort.set()
@@ -650,13 +651,14 @@ class Exporter():
         self.exefile = exefile
 
     def collect_raw_files(self, filename: str) -> int:
-        """Make an array of files whose name matches the city's name and return its length"""
-        
-        # TODO: CHange the filter to not include files without date. Possibly use re.
+        """Make an array of files whose name matches the city's name and return its length."""
         self.raw_files = sorted(
             filter(
-                lambda filename: filename.name.startswith(
-                    self.city_name) and ".cslmap" in filename.suffixes,
+                lambda filename:
+                    filename.name not in [
+                        f"{self.city_name}.cslmap", f"{self.city_name}.cslmap.gz"]
+                    and filename.name.startswith(self.city_name)
+                    and ".cslmap" in filename.suffixes,
                 self.source_directory.iterdir()
             ))
         return len(self.raw_files)
@@ -978,7 +980,7 @@ class CSLapse_window():
 
         self.log.info(f"Window set to {state}")
 
-    def get_preview(self) -> Preview:
+    def get_preview(self) -> object:
         """Return the preview object of the preview frame."""
         return self.preview_frame.get_preview()
 
